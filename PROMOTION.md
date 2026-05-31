@@ -12,7 +12,7 @@ I just open-sourced GrokChess — a clean, beautiful chess trainer built entirel
 
 Play against real Stockfish, get coaching in plain English (no SAN), and everything runs in your browser.
 
-Repo: https://github.com/saadkamal/grokchess
+Repo: https://github.com/saadkamal/GrokChess
 
 **Tweet 2/6**
 
@@ -53,7 +53,7 @@ Built by me (Saad Kamal) + xAI's Grok 4.3.
 
 Star it, fork it, break it, improve it.
 
-Link: https://github.com/saadkamal/grokchess
+Link: https://github.com/saadkamal/GrokChess
 
 ---
 
@@ -100,7 +100,7 @@ A chess trainer with:
 
 Built with Grok 4.3 by Saad Kamal.
 
-https://github.com/saadkamal/grokchess"
+https://github.com/saadkamal/GrokChess"
 
 ---
 

@@ -25,7 +25,7 @@ A modern, educational chess trainer featuring:
 ## Links
 
 - Live Demo: (add your deployment link)
-- Source: https://github.com/saadkamal/grokchess
+- Source: https://github.com/saadkamal/GrokChess
 
 ## Credits
 
