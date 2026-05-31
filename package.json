@@ -27,7 +27,7 @@
     "react": "^19.2.6",
     "react-chessboard": "^4.7.3",
     "react-dom": "^19.2.6",
-    "sirv": "^2.0.4",
+    "sirv": "^3.0.2",
     "sonner": "^2.0.7"
   },
   "devDependencies": {
