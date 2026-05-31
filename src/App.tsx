@@ -823,6 +823,24 @@ function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Subtle footer — GitHub, license, and credits */}
+      <div className="absolute bottom-0 inset-x-0 z-30 flex justify-center pb-1.5 pointer-events-auto">
+        <div className="flex items-center gap-x-3 text-[10px] text-white/25 tracking-[0.75px]">
+          <a
+            href="https://github.com/saadkamal/GrokChess"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white/60 transition-colors"
+          >
+            GITHUB
+          </a>
+          <span className="text-white/15">•</span>
+          <span>MIT</span>
+          <span className="text-white/15">•</span>
+          <span>Built by Saad Kamal with xAI's Grok 4.3</span>
+        </div>
+      </div>
     </div>
   );
 }
