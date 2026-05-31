@@ -725,13 +725,12 @@ function App() {
 
       {/* Main 2D Board */}
       <div className={`absolute inset-0 pt-14 sm:pt-16 z-10 flex justify-center 
-        ${isCoachOpen ? 'sm:items-center items-center pb-[100px] sm:pb-8' : 'items-center sm:pb-8'}`}>
+        ${isCoachOpen ? 'sm:items-center items-center sm:pb-8' : 'items-center sm:pb-8'}`}>
         <div 
           className="relative" 
           style={{ 
             width: 'min(82vh, 86vw)', 
-            height: 'min(82vh, 86vw)',
-            WebkitTransform: 'translateZ(0)' // Force hardware acceleration on iOS
+            height: 'min(82vh, 86vw)'
           }}
         >
           <Chessboard
