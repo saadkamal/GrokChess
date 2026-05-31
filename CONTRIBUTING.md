@@ -23,15 +23,34 @@ Be respectful, kind, and constructive. We are building a tool to help people lea
 - Explain the educational or UX value of the feature.
 - Keep the "plain English coach" philosophy in mind.
 
-### Pull Requests
+### Pull Requests & Branching
 
-1. Fork the repository.
-2. Create a branch from `main` (`git checkout -b feature/your-feature-name`).
-3. Make your changes.
-4. Ensure all tests pass (`npm test`).
-5. Run the linter (`npm run lint`).
-6. Update documentation if needed.
-7. Open a Pull Request with a clear description.
+The `main` branch is **protected**. All changes must go through Pull Requests.
+
+1. Create a feature branch from `main`:
+   ```bash
+   git checkout -b feat/your-feature-name
+   ```
+2. Make your changes.
+3. Ensure all tests pass:
+   ```bash
+   npm test
+   ```
+4. Run the linter:
+   ```bash
+   npm run lint
+   ```
+5. Push your branch and open a Pull Request.
+6. All PRs require:
+   - At least 1 approving review
+   - All CI checks (lint + tests) to pass
+   - Branch to be up to date with `main`
+
+We follow a simple naming convention for branches:
+- `feat/` for new features
+- `fix/` for bug fixes
+- `chore/` for maintenance / dependency updates
+- `docs/` for documentation changes
 
 ### Development Setup
 

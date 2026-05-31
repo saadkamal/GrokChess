@@ -4,6 +4,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
+    # Only allow minor and patch updates by default.
+    # Major updates will require manual review and code changes.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
