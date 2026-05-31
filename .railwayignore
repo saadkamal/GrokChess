@@ -1,0 +1,16 @@
+# Ignore heavy/unnecessary folders for Railway upload
+node_modules
+.git
+dist
+.DS_Store
+*.log
+
+# macOS restricted folders that cause IO errors
+Music
+Downloads
+Desktop
+Documents
+Pictures
+Movies
+Library
+Applications
