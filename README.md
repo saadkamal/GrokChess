@@ -135,10 +135,14 @@ MIT © Saad Kamal
 
 This project was built in collaboration with xAI's Grok 4.3.
 
-## Credits
+## Credits & Attribution
 
-- **Saad Kamal** — Concept, design direction, product decisions, and iteration
-- **xAI Grok 4.3** — Full implementation, architecture, and code quality
+This project was created through close collaboration between:
+
+- **Saad Kamal** — Product vision, design direction, iteration, and overall direction
+- **xAI's Grok 4.3** (April 2026) — Core architecture, implementation, coaching system, testing, documentation, and open-source setup
+
+Both are listed as co-authors on the initial commit.
 
 Special thanks to the authors of chess.js, react-chessboard, and the Stockfish team.
 
