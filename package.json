@@ -7,7 +7,7 @@
   "author": "Saad Kamal",
   "repository": {
     "type": "git",
-    "url": "https://github.com/saadkamal/grokchess"
+    "url": "https://github.com/saadkamal/GrokChess"
   },
   "scripts": {
     "dev": "vite",

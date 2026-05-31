@@ -36,8 +36,8 @@ Be respectful, kind, and constructive. We are building a tool to help people lea
 ### Development Setup
 
 ```bash
-git clone https://github.com/saadkamal/grokchess.git
-cd grokchess
+git clone https://github.com/saadkamal/GrokChess.git
+cd GrokChess
 npm install
 npm run dev
 ```

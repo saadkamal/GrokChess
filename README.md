@@ -1,10 +1,10 @@
 # GrokChess
 
 <p align="center">
-  <a href="https://github.com/saadkamal/grokchess/stargazers"><img src="https://img.shields.io/github/stars/saadkamal/grokchess?style=social" alt="GitHub Stars"></a>
-  <a href="https://github.com/saadkamal/grokchess/blob/main/LICENSE"><img src="https://img.shields.io/github/license/saadkamal/grokchess" alt="License"></a>
-  <!-- CI badge removed until workflow is added -->
-  <a href="https://github.com/saadkamal/grokchess"><img src="https://img.shields.io/github/last-commit/saadkamal/grokchess" alt="Last Commit"></a>
+  <a href="https://github.com/saadkamal/GrokChess/stargazers"><img src="https://img.shields.io/github/stars/saadkamal/GrokChess?style=social" alt="GitHub Stars"></a>
+  <a href="https://github.com/saadkamal/GrokChess/blob/main/LICENSE"><img src="https://img.shields.io/github/license/saadkamal/GrokChess" alt="License"></a>
+  <a href="https://github.com/saadkamal/GrokChess/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/saadkamal/GrokChess/ci.yml?branch=main" alt="CI Status"></a>
+  <a href="https://github.com/saadkamal/GrokChess"><img src="https://img.shields.io/github/last-commit/saadkamal/GrokChess" alt="Last Commit"></a>
 </p>
 
 A beautiful, educational chess trainer built for the modern web.
@@ -57,8 +57,8 @@ Play against a Stockfish-powered AI at three difficulty levels (Beginner, Club P
 ### Installation
 
 ```bash
-git clone https://github.com/saadkamal/grokchess.git
-cd grokchess
+git clone https://github.com/saadkamal/GrokChess.git
+cd GrokChess
 npm install
 ```
 
@@ -81,7 +81,7 @@ npm run preview
 
 1. Push your code to GitHub.
 2. Go to [Railway.app](https://railway.app) and create a new project.
-3. Connect your GitHub repo (`saadkamal/grokchess`).
+3. Connect your GitHub repo (`saadkamal/GrokChess`).
 4. Railway will auto-detect Node.js.
 5. Set the following:
    - **Build Command**: `npm run build`
@@ -141,6 +141,15 @@ This project was built in collaboration with xAI's Grok 4.3.
 - **xAI Grok 4.3** — Full implementation, architecture, and code quality
 
 Special thanks to the authors of chess.js, react-chessboard, and the Stockfish team.
+
+## Contributing & Community
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+- [Issue Templates](.github/ISSUE_TEMPLATE/)
+- [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ---
 
