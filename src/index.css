@@ -429,5 +429,11 @@ div[style*="position: absolute"][style*="font-size"] {
   user-select: none;
 }
 
+/* Thin white border on black pieces for better contrast on mobile */
+.react-chessboard-piece[data-piece^="b"] svg,
+.react-chessboard-piece[data-piece^="b"] img {
+  filter: drop-shadow(0 0 0.8px #fff) drop-shadow(0 0 0.8px #fff);
+}
+
 
 
