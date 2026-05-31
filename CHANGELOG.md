@@ -4,6 +4,10 @@ All notable changes to GrokChess will be documented in this file.
 
 ## [1.0.0] - 2026-02
 
+### Links
+- Website: [www.grokchess.com](https://www.grokchess.com/)
+- GitHub: https://github.com/saadkamal/GrokChess
+
 ### Added
 - Three difficulty levels: Beginner (custom engine), Club Player & Expert (Stockfish 16 WASM)
 - Real-time AI coach with plain-English explanations

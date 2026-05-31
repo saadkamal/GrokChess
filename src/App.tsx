@@ -12,7 +12,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Chess } from 'chess.js';
 import type { Square, Move } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
-import { RotateCcw, ArrowLeft, Target } from 'lucide-react';
+import { RotateCcw, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { initStockfish, getBestMove as stockfishGetBestMove, getFastAnalysis } from './lib/stockfishService';
@@ -361,6 +361,7 @@ function App() {
   // Dedicated state for last-move square highlights (subtle red/cyan). Same pattern as rec highlights
   // so that Black's move animations also get crisp, non-ghosting last-move squares.
   const [lastMoveSquares, setLastMoveSquares] = useState<{ from: Square; to: Square } | null>(null);
+  const [isCoachOpen, setIsCoachOpen] = useState(true); // Collapsible on mobile
 
   // Ref to hold the pending recommendation timeout ID so we can cancel it on new moves (prevents ghosting)
   const pendingRecommendationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -637,20 +638,18 @@ function App() {
   }, [coachInsights.length]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#020206] text-[#c8c8d0] font-sans">
-      {/* Extremely minimal floating top bar */}
-      <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-4 pointer-events-none">
-        <div className="flex items-center gap-3 pointer-events-auto">
-          <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded bg-white/90 flex items-center justify-center">
-              <Target className="w-3.5 h-3.5 text-black" />
-            </div>
-            <div className="text-[15px] font-semibold tracking-[-0.5px] text-white">GROKCHESS</div>
-            <div className="text-[10px] text-white/40 tracking-[1px] mt-0.5">xAI</div>
+    <div className="h-screen w-screen overflow-hidden bg-[#020206] text-[#c8c8d0] font-sans pb-[env(safe-area-inset-bottom)]">
+      {/* Top bar — responsive for mobile */}
+      <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 sm:px-8 sm:py-4 pointer-events-none">
+        <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-0 sm:gap-2">
+            <div className="text-[13px] sm:text-[15px] font-semibold tracking-[-0.5px] text-white">GROKCHESS</div>
+            <div className="text-[9px] sm:text-[10px] text-white/40 tracking-[0.5px] sm:mt-0.5">Built with Grok</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 bg-black/60 backdrop-blur-xl rounded-full p-1 border border-white/10 pointer-events-auto">
+        {/* Difficulty selector — more compact on mobile */}
+        <div className="flex items-center gap-0.5 sm:gap-1 bg-black/60 backdrop-blur-xl rounded-full p-0.5 sm:p-1 border border-white/10 pointer-events-auto">
           {DIFFICULTIES.map((d) => {
             const cfg = DIFFICULTY_CONFIG[d];
             const active = d === difficulty;
@@ -658,7 +657,7 @@ function App() {
               <button
                 key={d}
                 onClick={() => changeDifficulty(d)}
-                className={`px-6 py-1 text-xs font-medium rounded-full transition-all ${active ? 'bg-white text-black' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
+                className={`px-3 sm:px-5 py-1 text-[10px] sm:text-xs font-medium rounded-full transition-all ${active ? 'bg-white text-black' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
               >
                 {cfg.label}
               </button>
@@ -666,23 +665,25 @@ function App() {
           })}
         </div>
 
-        <div className="flex items-center gap-3 text-xs pointer-events-auto">
-          <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-40 transition">
-            <ArrowLeft className="w-3.5 h-3.5" /> TAKE BACK
+        {/* Action buttons — smaller on mobile */}
+        <div className="flex items-center gap-1.5 sm:gap-3 text-[10px] sm:text-xs pointer-events-auto">
+          <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-40 transition">
+            <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">TAKE BACK</span>
           </button>
-          <button onClick={() => resetGame()} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#ff4d6d]">
-            <RotateCcw className="w-3.5 h-3.5" /> NEW GAME
+          <button onClick={() => resetGame()} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#ff4d6d]">
+            <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">NEW</span>
           </button>
         </div>
       </div>
 
       {/* Premium Holographic Platform (CSS - strong futuristic presence) */}
-      <div className="absolute inset-0 pt-16 flex items-center justify-center">
+      <div className={`absolute inset-0 pt-14 sm:pt-16 flex justify-center 
+        ${isCoachOpen ? 'sm:items-center items-center pb-[130px] sm:pb-8' : 'items-center sm:pb-8'}`}>
         <div 
           className="relative holographic-platform"
           style={{ 
-            width: 'min(82vh, 82vw)', 
-            height: 'min(82vh, 82vw)',
+            width: 'min(88vh, 92vw)', 
+            height: 'min(88vh, 92vw)',
           }}
         >
           {/* Main dark base with deep material feel */}
@@ -723,8 +724,9 @@ function App() {
       </div>
 
       {/* Main 2D Board */}
-      <div className="absolute inset-0 pt-16 z-10 flex items-center justify-center">
-        <div className="relative" style={{ width: 'min(76vh, 76vw)', height: 'min(76vh, 76vw)' }}>
+      <div className={`absolute inset-0 pt-14 sm:pt-16 z-10 flex justify-center 
+        ${isCoachOpen ? 'sm:items-center items-center pb-[130px] sm:pb-8' : 'items-center sm:pb-8'}`}>
+        <div className="relative" style={{ width: 'min(82vh, 86vw)', height: 'min(82vh, 86vw)' }}>
           <Chessboard
             position={fen}
             onPieceDrop={onPieceDrop}
@@ -769,36 +771,64 @@ function App() {
         </div>
       </div>
 
-      {/* Floating Coach HUD */}
-      <div className="absolute bottom-6 right-6 z-40 w-[380px] pointer-events-auto">
-        <div className="bg-black/70 backdrop-blur-2xl border border-[#00e5ff]/20 rounded-2xl p-5 text-sm shadow-2xl">
-          <div className="flex items-center justify-between mb-3 px-1">
-            <div className="text-[10px] tracking-[2px] text-[#00e5ff]/70 font-medium">LIVE COACH</div>
-            <div className={`text-[10px] px-3 py-0.5 rounded-full border ${isThinking ? 'border-[#00e5ff]/40 text-[#00e5ff]' : 'border-white/10 text-white/50'}`}>
-              {isThinking ? 'THINKING' : 'OBSERVING'}
+      {/* Coach Panel — Collapsible on mobile so it doesn't block the board */}
+      {isCoachOpen ? (
+        <div className="absolute bottom-3 right-2 left-2 sm:bottom-6 sm:right-6 sm:left-auto z-40 sm:w-[340px] pointer-events-auto max-h-[158px] sm:max-h-none">
+          <div className="bg-black/70 backdrop-blur-2xl border border-[#00e5ff]/20 rounded-2xl p-3 sm:p-5 text-sm shadow-2xl h-full flex flex-col">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-3 px-1">
+              <div className="text-[8px] sm:text-[10px] tracking-[2px] text-[#00e5ff]/70 font-medium">LIVE COACH</div>
+              <div className="flex items-center gap-2">
+                <div className={`text-[8px] sm:text-[10px] px-2 py-0.5 rounded-full border ${isThinking ? 'border-[#00e5ff]/40 text-[#00e5ff]' : 'border-white/10 text-white/50'}`}>
+                  {isThinking ? 'THINKING' : 'OBSERVING'}
+                </div>
+                {/* Collapse button - only visible on mobile */}
+                <button 
+                  onClick={() => setIsCoachOpen(false)} 
+                  className="sm:hidden flex items-center justify-center w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 transition"
+                  aria-label="Hide coach"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable insights area - limited height on mobile, latest on top */}
+            <div className="flex-1 overflow-y-auto pr-1 text-[11.5px] sm:text-[13.5px] leading-relaxed space-y-2 min-h-0 max-h-[92px]">
+              <AnimatePresence>
+                {coachInsights.slice().reverse().slice(0, 5).map((insight) => (
+                  <motion.div key={insight.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="text-[#c8c8d0]">
+                    {insight.text.split('\n\nWHY THIS IS GOOD:')[0]}
+                    {insight.text.includes('WHY THIS IS GOOD') && (
+                      <div className="mt-1 sm:mt-2 pl-2.5 border-l border-[#00e5ff]/40 text-[10px] sm:text-[12px] text-[#a0a0aa]">
+                        {insight.text.split('\n\nWHY THIS IS GOOD:')[1]?.split('\n\n')[0]}
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+
+            <div className="text-[8px] sm:text-[10px] text-white/40 mt-2 sm:mt-4 pt-2 sm:pt-3 border-t border-white/10 tracking-wide">
+              Strongest move shown automatically after every turn.
             </div>
           </div>
-          <div className="space-y-3 max-h-[260px] overflow-auto pr-1 text-[13.5px] leading-relaxed">
-            <AnimatePresence>
-              {coachInsights.slice().reverse().slice(0, 3).map((insight) => (
-                <motion.div key={insight.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="text-[#c8c8d0]">
-                  {insight.text.split('\n\nWHY THIS IS GOOD:')[0]}
-                  {insight.text.includes('WHY THIS IS GOOD') && (
-                    <div className="mt-2 pl-3 border-l border-[#00e5ff]/40 text-[12.5px] text-[#a0a0aa]">
-                      {insight.text.split('\n\nWHY THIS IS GOOD:')[1]?.split('\n\n')[0]}
-                    </div>
-                  )}
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-          <div className="text-[10px] text-white/40 mt-4 pt-3 border-t border-white/10 tracking-wide">
-            Strongest move shown automatically after every turn.
-          </div>
         </div>
-      </div>
+      ) : (
+        /* Collapsed coach pill on mobile */
+        <div className="absolute bottom-3 right-3 z-40 pointer-events-auto sm:hidden">
+          <button
+            onClick={() => setIsCoachOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-xl border border-[#00e5ff]/30 text-[#00e5ff] text-xs active:bg-black/80 transition"
+          >
+            LIVE COACH
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
-      <div className="absolute bottom-6 left-6 z-40 text-xs text-white/50 tracking-[1.5px] font-mono">
+      {/* Game status — centered on top of the board on mobile */}
+      <div className="absolute z-50 text-white/50 tracking-[1.5px] font-mono text-[10px] text-center
+        top-[72px] left-1/2 -translate-x-1/2 sm:text-xs sm:bottom-6 sm:top-auto sm:left-6 sm:-translate-x-0 sm:text-left">
         {isThinking ? 'OPPONENT CALCULATING...' : chess.turn() === 'w' ? 'YOUR MOVE' : 'AI MOVE'} • {DIFFICULTY_CONFIG[difficulty].label.toUpperCase()}
       </div>
 
@@ -824,20 +854,21 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Subtle footer — GitHub, license, and credits */}
-      <div className="absolute bottom-0 inset-x-0 z-30 flex justify-center pb-1.5 pointer-events-auto">
-        <div className="flex items-center gap-x-3 text-[10px] text-white/25 tracking-[0.75px]">
+      {/* Footer — visible on mobile only when coach is collapsed */}
+      <div className={`absolute bottom-0 inset-x-0 z-30 flex justify-center pb-1 pointer-events-auto
+        ${isCoachOpen ? 'hidden sm:flex' : 'flex sm:flex'}`}>
+        <div className="flex items-center gap-x-2 text-[9px] text-white/70 tracking-[0.5px] px-4 sm:px-0">
           <a
             href="https://github.com/saadkamal/GrokChess"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-white/60 transition-colors"
+            className="hover:text-white transition-colors"
           >
             GITHUB
           </a>
-          <span className="text-white/15">•</span>
+          <span className="text-white/30">•</span>
           <span>MIT</span>
-          <span className="text-white/15">•</span>
+          <span className="text-white/30">•</span>
           <span>Built by Saad Kamal with xAI's Grok 4.3</span>
         </div>
       </div>

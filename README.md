@@ -14,7 +14,11 @@ Play against a Stockfish-powered AI at three difficulty levels (Beginner, Club P
 **Built by Saad Kamal with xAI's Grok 4.3 (April 2026 release)**
 
 <p align="center">
-  <strong><a href="https://grokchess-production-4642.up.railway.app/">▶ Play the Live Demo</a></strong>
+  <strong><a href="https://www.grokchess.com/">▶ Play the Live Demo</a></strong>
+</p>
+
+<p align="center">
+  <a href="https://www.grokchess.com/">www.grokchess.com</a> &nbsp;•&nbsp; <a href="https://github.com/saadkamal/GrokChess">GitHub</a>
 </p>
 
 ## Features
@@ -94,7 +98,8 @@ Since the project uses a `Dockerfile` (needed for the special headers that Stock
 
 The included `server.js` will handle serving the built files with the required COEP/COOP headers.
 
-**Custom Domain**: You can add one easily in the service settings after the first successful deployment.
+**Custom Domain**: You can add one easily in the service settings after the first successful deployment.  
+For example, this project is live at [www.grokchess.com](https://www.grokchess.com/).
 
 **Note**: Avoid using `railway up` from your local machine (especially on macOS) — it frequently fails due to permission errors when scanning your home directory. Always deploy from the GitHub repository through the dashboard.
 
