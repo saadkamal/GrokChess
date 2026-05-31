@@ -13,6 +13,10 @@ Play against a Stockfish-powered AI at three difficulty levels (Beginner, Club P
 
 **Built by Saad Kamal with xAI's Grok 4.3 (April 2026 release)**
 
+<p align="center">
+  <strong><a href="https://grokchess-production-4642.up.railway.app/">▶ Play the Live Demo</a></strong>
+</p>
+
 ## Features
 
 - **Three AI Levels**
