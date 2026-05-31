@@ -23,6 +23,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check for Railway (must be before SPA fallback)
+app.get('/health', (req, res) => {
+  res.status(200).send('ok');
+});
+
 // Serve static files from dist/
 const serve = sirv(dist, {
   single: true,           // SPA fallback to index.html
@@ -32,11 +37,6 @@ const serve = sirv(dist, {
 });
 
 app.use(serve);
-
-// Health check for Railway
-app.get('/health', (req, res) => {
-  res.status(200).send('ok');
-});
 
 app.listen(port, () => {
   console.log(`GrokChess running on port ${port}`);
