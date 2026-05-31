@@ -6,7 +6,12 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'dist',
+    'public/stockfish/**',   // Generated Emscripten glue code for Stockfish WASM — do not lint
+    'node_modules/**',
+    '**/*.js',               // Ignore all .js files (mainly the stockfish glue and any other generated JS)
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -17,6 +22,15 @@ export default defineConfig([
     ],
     languageOptions: {
       globals: globals.browser,
+    },
+  },
+
+  // Allow `any` in WASM interop files (Stockfish worker/service) — common and acceptable for low-level bindings
+  {
+    files: ['src/lib/stockfish*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/ban-ts-comment': 'off',
     },
   },
 ])

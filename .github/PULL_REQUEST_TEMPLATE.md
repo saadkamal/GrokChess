@@ -24,6 +24,13 @@ Please describe the tests that you ran.
 - [ ] New and existing unit tests pass locally
 - [ ] I have updated the documentation accordingly
 
+## Branching & Merging
+
+- All changes must come via Pull Requests to the `main` branch.
+- The maintainer (Saad Kamal) will review and merge all contributions.
+- Preferred merge method: **Squash and merge** (for clean history).
+- Rebase and merge is also allowed for small, well-structured PRs.
+
 ## Credits
 
 This PR was contributed as part of the open source GrokChess project, originally built by **Saad Kamal** with **xAI's Grok 4.3**.

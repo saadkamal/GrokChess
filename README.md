@@ -79,20 +79,20 @@ npm run preview
 
 ### Deploy to Railway (Recommended)
 
-1. Push your code to GitHub.
-2. Go to [Railway.app](https://railway.app) and create a new project.
-3. Connect your GitHub repo (`saadkamal/GrokChess`).
-4. Railway will auto-detect Node.js.
-5. Set the following:
-   - **Build Command**: `npm run build`
-   - **Start Command**: `npm run start`
-6. Add these environment variables if needed (usually not required):
-   - `NODE_ENV=production`
-7. Deploy.
+Since the project uses a `Dockerfile` (needed for the special headers that Stockfish WASM requires), deploy directly from GitHub:
 
-Railway will automatically set the correct `PORT`. The `server.js` includes the required headers for Stockfish to work properly.
+1. Go to [Railway.app](https://railway.app) and open/create your project.
+2. Click **New Service** → **Deploy from GitHub Repo**.
+3. Select the repo `saadkamal/GrokChess`.
+4. **Critical**: Set **Root Directory** to `/` (the root of the repo).
+5. Railway will automatically detect and use the `Dockerfile`.
+6. Deploy.
 
-**Custom Domain**: You can easily add one in Railway settings.
+The included `server.js` will handle serving the built files with the required COEP/COOP headers.
+
+**Custom Domain**: You can add one easily in the service settings after the first successful deployment.
+
+**Note**: Avoid using `railway up` from your local machine (especially on macOS) — it frequently fails due to permission errors when scanning your home directory. Always deploy from the GitHub repository through the dashboard.
 
 ### Testing
 
@@ -154,6 +154,17 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 - [Security Policy](SECURITY.md)
 - [Issue Templates](.github/ISSUE_TEMPLATE/)
 - [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md)
+
+### Branching & Merging Policy
+
+- The `main` branch is **protected** — direct pushes are not allowed.
+- All changes must go through Pull Requests.
+- **Default merge method**: **Squash and merge** (preferred for clean, linear history).
+- **Rebase and merge** is allowed for small, well-structured PRs where preserving individual commits is valuable.
+- Regular merge commits are disabled.
+- The maintainer (Saad Kamal) reviews and merges all contributions.
+
+This policy keeps the project history clean and easy to follow while ensuring the maintainer has final control.
 
 ---
 
