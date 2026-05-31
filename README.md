@@ -155,6 +155,17 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 - [Issue Templates](.github/ISSUE_TEMPLATE/)
 - [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md)
 
+### Branching & Merging Policy
+
+- The `main` branch is **protected** — direct pushes are not allowed.
+- All changes must go through Pull Requests.
+- **Default merge method**: **Squash and merge** (preferred for clean, linear history).
+- **Rebase and merge** is allowed for small, well-structured PRs where preserving individual commits is valuable.
+- Regular merge commits are disabled.
+- The maintainer (Saad Kamal) reviews and merges all contributions.
+
+This policy keeps the project history clean and easy to follow while ensuring the maintainer has final control.
+
 ---
 
 If you find this project helpful for learning or teaching chess, feel free to star it and share it.
