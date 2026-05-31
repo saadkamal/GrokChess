@@ -678,7 +678,7 @@ function App() {
 
       {/* Premium Holographic Platform (CSS - strong futuristic presence) */}
       <div className={`absolute inset-0 pt-14 sm:pt-16 flex justify-center 
-        ${isCoachOpen ? 'sm:items-center items-center pb-[130px] sm:pb-8' : 'items-center sm:pb-8'}`}>
+        ${isCoachOpen ? 'sm:items-center items-center pb-[100px] sm:pb-8' : 'items-center sm:pb-8'}`}>
         <div 
           className="relative holographic-platform"
           style={{ 
@@ -725,8 +725,15 @@ function App() {
 
       {/* Main 2D Board */}
       <div className={`absolute inset-0 pt-14 sm:pt-16 z-10 flex justify-center 
-        ${isCoachOpen ? 'sm:items-center items-center pb-[130px] sm:pb-8' : 'items-center sm:pb-8'}`}>
-        <div className="relative" style={{ width: 'min(82vh, 86vw)', height: 'min(82vh, 86vw)' }}>
+        ${isCoachOpen ? 'sm:items-center items-center pb-[100px] sm:pb-8' : 'items-center sm:pb-8'}`}>
+        <div 
+          className="relative" 
+          style={{ 
+            width: 'min(82vh, 86vw)', 
+            height: 'min(82vh, 86vw)',
+            WebkitTransform: 'translateZ(0)' // Force hardware acceleration on iOS
+          }}
+        >
           <Chessboard
             position={fen}
             onPieceDrop={onPieceDrop}
@@ -736,9 +743,10 @@ function App() {
             customBoardStyle={{
               borderRadius: '4px',
               boxShadow: 'none',
+              border: '1px solid rgba(255,255,255,0.06)', // subtle edge for better square definition on mobile
             }}
-            customDarkSquareStyle={{ backgroundColor: '#111117' }}
-            customLightSquareStyle={{ backgroundColor: '#1a1a22' }}
+            customDarkSquareStyle={{ backgroundColor: '#0a0a0f' }}
+            customLightSquareStyle={{ backgroundColor: '#2f2f3a' }}
             customDropSquareStyle={{ 
               boxShadow: 'inset 0 0 0 4px rgba(0,229,255,0.65)',
               backgroundColor: 'rgba(0,229,255,0.08)'
