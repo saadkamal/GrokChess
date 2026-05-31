@@ -678,9 +678,9 @@ function App() {
 
       {/* Premium Holographic Platform (CSS - strong futuristic presence) */}
       <div className={`absolute inset-0 pt-14 sm:pt-16 flex justify-center 
-        ${isCoachOpen ? 'sm:items-center items-center pb-[100px] sm:pb-8' : 'items-center sm:pb-8'}`}>
+        ${isCoachOpen ? 'sm:items-center items-start pt-4 sm:pt-16 pb-0 sm:pb-8' : 'items-center sm:pb-8'}`}>
         <div 
-          className="relative holographic-platform"
+          className={`relative holographic-platform ${isCoachOpen ? 'mt-8 sm:mt-3' : 'mt-3'} sm:mt-0`}
           style={{ 
             width: 'min(88vh, 92vw)', 
             height: 'min(88vh, 92vw)',
@@ -725,9 +725,9 @@ function App() {
 
       {/* Main 2D Board */}
       <div className={`absolute inset-0 pt-14 sm:pt-16 z-10 flex justify-center 
-        ${isCoachOpen ? 'sm:items-center items-center sm:pb-8' : 'items-center sm:pb-8'}`}>
+        ${isCoachOpen ? 'sm:items-center items-start pt-4 sm:pt-16 pb-0 sm:pb-8' : 'items-center sm:pb-8'}`}>
         <div 
-          className="relative" 
+          className={`relative ${isCoachOpen ? 'mt-8 sm:mt-3' : 'mt-3'} sm:mt-0`} 
           style={{ 
             width: 'min(82vh, 86vw)', 
             height: 'min(82vh, 86vw)'
@@ -835,7 +835,7 @@ function App() {
 
       {/* Game status — centered on top of the board on mobile */}
       <div className="absolute z-50 text-white/50 tracking-[1.5px] font-mono text-[10px] text-center
-        top-[72px] left-1/2 -translate-x-1/2 sm:text-xs sm:bottom-6 sm:top-auto sm:left-6 sm:-translate-x-0 sm:text-left">
+        top-[70px] left-1/2 -translate-x-1/2 sm:text-xs sm:bottom-6 sm:top-auto sm:left-6 sm:-translate-x-0 sm:text-left">
         {isThinking ? 'OPPONENT CALCULATING...' : chess.turn() === 'w' ? 'YOUR MOVE' : 'AI MOVE'} • {DIFFICULTY_CONFIG[difficulty].label.toUpperCase()}
       </div>
 
