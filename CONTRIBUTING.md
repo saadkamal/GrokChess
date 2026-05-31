@@ -25,8 +25,9 @@ Be respectful, kind, and constructive. We are building a tool to help people lea
 
 ### Pull Requests & Branching
 
-The `main` branch is **protected**. All changes must go through Pull Requests.
+The `main` branch is **protected**. Direct pushes to `main` are not allowed.
 
+#### Workflow (for everyone, including the maintainer)
 1. Create a feature branch from `main`:
    ```bash
    git checkout -b feat/your-feature-name
@@ -40,11 +41,22 @@ The `main` branch is **protected**. All changes must go through Pull Requests.
    ```bash
    npm run lint
    ```
-5. Push your branch and open a Pull Request.
+5. Push your branch and open a Pull Request against `main`.
 6. All PRs require:
-   - At least 1 approving review
-   - All CI checks (lint + tests) to pass
+   - At least 1 approving review from a code owner
+   - All CI checks (`lint-and-test`) to pass
    - Branch to be up to date with `main`
+   - All conversations resolved
+
+#### Maintainer Role
+As the maintainer (Saad Kamal), you have final say on what gets merged. You are expected to review and merge contributions. You may also push directly in rare cases (via temporary bypass if needed), but the normal flow is still through PRs for transparency.
+
+#### Merging Strategy
+- **Default**: Squash and merge (recommended for most contributions)
+  - Keeps history clean and linear
+  - Each PR becomes one commit with a clear message
+- You may choose **Rebase and merge** for small, clean PRs where you want to preserve individual commits.
+- We generally avoid regular "Merge commits" unless there's a strong reason (complex feature with many related PRs).
 
 We follow a simple naming convention for branches:
 - `feat/` for new features
