@@ -170,7 +170,7 @@ async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<{ 
       if (result?.bestMove) {
         return { san: '', from: result.bestMove.slice(0, 2) as Square, to: result.bestMove.slice(2, 4) as Square, eval: result.eval || 0, pv: result.pv };
       }
-    } catch (e) { console.warn('Stockfish call failed'); }
+    } catch { console.warn('Stockfish call failed'); }
     return null;
   })();
 
@@ -267,7 +267,7 @@ function explainPlayerMove(move: Move): string {
 function generateCoachInsight(game: Chess, lastMove: Move | null, isPlayerMove: boolean, _difficulty: Difficulty, shouldHighlight: boolean = true): CoachInsight {
   const id = Date.now();
   const moveSan = lastMove?.san || '';
-  let text = '';
+  let text = ''; // eslint-disable-line no-useless-assignment -- assigned in multiple branches below
   let quality: MoveQuality | undefined;
   const highlighted: Square[] = [];
 
@@ -457,7 +457,7 @@ function App() {
 
           pendingRecommendationTimeoutRef.current = setTimeout(async () => {
             const fastAnalysisPromise = getFastAnalysis(chess.fen());
-            const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve(null), 1800));
+            const timeoutPromise = new Promise<unknown>((resolve) => setTimeout(() => resolve(null), 1800));
             let analysis = await Promise.race([fastAnalysisPromise, timeoutPromise]);
 
             if (!analysis?.bestMove) {
@@ -474,12 +474,12 @@ function App() {
               const targetPiece = chess.get(toSq);
 
               const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece };
-              let plainEnglish = targetPiece 
+              const plainEnglish = targetPiece 
                 ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
                 : describeMoveInPlainEnglish(rec);
 
               const why = getBetterMoveWhy(chess, rec);
-              let text = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
+              const text = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
 
               // Set the new recommendation (bright cyan).
               // At the same moment, clear the previous Black last-move red highlight.
