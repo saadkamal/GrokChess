@@ -53,7 +53,8 @@ Built by me (Saad Kamal) + xAI's Grok 4.3.
 
 Star it, fork it, break it, improve it.
 
-Link: https://github.com/saadkamal/GrokChess
+Website: https://www.grokchess.com  
+GitHub: https://github.com/saadkamal/GrokChess
 
 ---
 
@@ -82,9 +83,9 @@ Show the repo on screen.
 Voice: "I just open sourced the whole thing. Clean code, tests, proper docs."
 
 [35s+]
-End screen with GitHub link + "Built with Grok 4.3"
+End screen with website + GitHub + "Built with Grok 4.3"
 
-Voice: "Link in bio. Go mess with it."
+Voice: "www.grokchess.com — Link in bio. Go mess with it."
 
 ---
 
@@ -100,7 +101,8 @@ A chess trainer with:
 
 Built with Grok 4.3 by Saad Kamal.
 
-https://github.com/saadkamal/GrokChess"
+Website: https://www.grokchess.com  
+GitHub: https://github.com/saadkamal/GrokChess"
 
 ---
 
