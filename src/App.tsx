@@ -38,6 +38,13 @@ interface CoachInsight {
   createdAtMove?: number;
 }
 
+interface FastAnalysisResult {
+  bestMove: string;
+  eval?: number;
+  pv?: string;
+  multiPV?: Array<{ move: string; eval: number; pv: string }>;
+}
+
 const DIFFICULTY_CONFIG = {
   easy: { depth: 1, label: 'Beginner', description: 'Forgiving, great for learning fundamentals', color: '#4ade80' },
   medium: { depth: 2, label: 'Club Player', description: 'Solid play with occasional tactics', color: '#fbbf24' },
@@ -457,8 +464,8 @@ function App() {
 
           pendingRecommendationTimeoutRef.current = setTimeout(async () => {
             const fastAnalysisPromise = getFastAnalysis(chess.fen());
-            const timeoutPromise = new Promise<unknown>((resolve) => setTimeout(() => resolve(null), 1800));
-            let analysis = await Promise.race([fastAnalysisPromise, timeoutPromise]);
+            const timeoutPromise = new Promise<FastAnalysisResult | null>((resolve) => setTimeout(() => resolve(null), 1800));
+            let analysis: FastAnalysisResult | null = await Promise.race([fastAnalysisPromise, timeoutPromise]);
 
             if (!analysis?.bestMove) {
               const fallback = await getBestMoveSmart(chess.fen(), difficulty);
