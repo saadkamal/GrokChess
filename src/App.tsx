@@ -162,7 +162,45 @@ function getBestMove(fen: string, difficulty: Difficulty): { san: string; from: 
   return { san: bestMove.san, from: bestMove.from, to: bestMove.to, eval: bestValue };
 }
 
-async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<{ san: string; from: Square; to: Square; eval: number; pv?: string } | null> {
+type PromotionPiece = 'q' | 'r' | 'b' | 'n';
+
+type EngineMove = {
+  san: string;
+  from: Square;
+  to: Square;
+  promotion?: PromotionPiece;
+  eval: number;
+  pv?: string;
+};
+
+function parseUciMove(uci: string): { from: Square; to: Square; promotion?: PromotionPiece } | null {
+  if (!uci || uci.length < 4) return null;
+  const from = uci.slice(0, 2) as Square;
+  const to = uci.slice(2, 4) as Square;
+  const promoChar = uci[4];
+  const promotion = promoChar && ['q', 'r', 'b', 'n'].includes(promoChar)
+    ? promoChar as PromotionPiece
+    : undefined;
+  return { from, to, promotion };
+}
+
+function applyChessMove(
+  chess: Chess,
+  move: { san?: string; from?: Square; to?: Square; promotion?: PromotionPiece }
+): Move | null {
+  try {
+    if (move.san) return chess.move(move.san);
+    if (move.from && move.to) {
+      return chess.move({ from: move.from, to: move.to, promotion: move.promotion });
+    }
+    return null;
+  } catch {
+    console.warn('Failed to apply move', move);
+    return null;
+  }
+}
+
+async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<EngineMove | null> {
   if (difficulty === 'easy') {
     return getBestMove(fen, difficulty);
   }
@@ -175,7 +213,16 @@ async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<{ 
       const opts = difficulty === 'hard' ? { depth: depthForHard, multiPV: 3 } : { movetime: timeMap[difficulty], multiPV: 1 };
       const result = await stockfishGetBestMove(fen, skillMap[difficulty], opts);
       if (result?.bestMove) {
-        return { san: '', from: result.bestMove.slice(0, 2) as Square, to: result.bestMove.slice(2, 4) as Square, eval: result.eval || 0, pv: result.pv };
+        const parsed = parseUciMove(result.bestMove);
+        if (!parsed) return null;
+        return {
+          san: '',
+          from: parsed.from,
+          to: parsed.to,
+          promotion: parsed.promotion,
+          eval: result.eval || 0,
+          pv: result.pv,
+        };
       }
     } catch { console.warn('Stockfish call failed'); }
     return null;
@@ -430,13 +477,12 @@ function App() {
 
     setIsThinking(true);
     setTimeout(async () => {
-      const aiResult = await getBestMoveSmart(chess.fen(), difficulty);
-      if (aiResult) {
-        let aiMove: Move | null = null;
-        if (aiResult.san) aiMove = chess.move(aiResult.san);
-        else if (aiResult.from && aiResult.to) aiMove = chess.move({ from: aiResult.from, to: aiResult.to });
+      try {
+        const aiResult = await getBestMoveSmart(chess.fen(), difficulty);
+        if (aiResult) {
+          const aiMove = applyChessMove(chess, aiResult);
 
-        if (aiMove) {
+          if (aiMove) {
           // Clear highlights before applying AI move to prevent visual ghosting during animation
           setLastMoveSquares(null);
           setRecommendationHighlights(null);
@@ -471,13 +517,18 @@ function App() {
             if (!analysis?.bestMove) {
               const fallback = await getBestMoveSmart(chess.fen(), difficulty);
               if (fallback?.from && fallback?.to) {
-                analysis = { bestMove: fallback.from + fallback.to, multiPV: [] };
+                analysis = {
+                  bestMove: fallback.from + fallback.to + (fallback.promotion ?? ''),
+                  multiPV: [],
+                };
               }
             }
 
             if (analysis?.bestMove && !chess.isGameOver()) {
-              const fromSq = analysis.bestMove.slice(0, 2) as Square;
-              const toSq = analysis.bestMove.slice(2, 4) as Square;
+              const parsed = parseUciMove(analysis.bestMove);
+              if (!parsed) return;
+
+              const { from: fromSq, to: toSq } = parsed;
               const actualPiece = chess.get(fromSq)?.type;
               const targetPiece = chess.get(toSq);
 
@@ -509,13 +560,15 @@ function App() {
 
             pendingRecommendationTimeoutRef.current = null;
           }, 420);
+          }
         }
+        if (chess.isGameOver()) {
+          const status = chess.isCheckmate() ? (chess.turn() === 'w' ? 'black-wins' : 'white-wins') : 'draw';
+          setGameStatus(status);
+        }
+      } finally {
+        setIsThinking(false);
       }
-      if (chess.isGameOver()) {
-        const status = chess.isCheckmate() ? (chess.turn() === 'w' ? 'black-wins' : 'white-wins') : 'draw';
-        setGameStatus(status);
-      }
-      setIsThinking(false);
     }, difficulty === 'hard' ? 650 : 420);
 
     return true;
