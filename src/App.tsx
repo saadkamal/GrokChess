@@ -394,7 +394,7 @@ function App() {
   const [chess] = useState(() => new Chess());
   const [fen, setFen] = useState(chess.fen());
   const [moveHistory, setMoveHistory] = useState<Move[]>([]);
-  const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | undefined>();
+
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [isThinking, setIsThinking] = useState(false);
   const [coachInsights, setCoachInsights] = useState<CoachInsight[]>([
@@ -446,7 +446,6 @@ function App() {
     chess.reset();
     setFen(chess.fen());
     setMoveHistory([]);
-    setLastMove(undefined);
     setGameStatus('playing');
     setIsThinking(false);
     setRecommendationHighlights(null);
@@ -469,8 +468,6 @@ function App() {
     const newHistory = [...moveHistory, move];
     setFen(newFen);
     setMoveHistory(newHistory);
-    setLastMove({ from: move.from, to: move.to });
-
     setRecommendationHighlights(null);
     setLastMoveSquares({ from: move.from, to: move.to });
 
@@ -507,8 +504,6 @@ function App() {
             const updatedHistory = [...newHistory, aiMove];
             setFen(updatedFen);
             setMoveHistory(updatedHistory);
-            setLastMove({ from: aiMove.from, to: aiMove.to });
-
             requestAnimationFrame(() => {
               if (generation !== gameGenerationRef.current) return;
               setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
@@ -607,8 +602,6 @@ function App() {
     setFen(newFen);
     setMoveHistory(newHistory);
     const restoredLast = newHistory.length > 0 ? { from: newHistory[newHistory.length-1].from, to: newHistory[newHistory.length-1].to } : undefined;
-    setLastMove(restoredLast);
-    void lastMove; // used for potential future UI (last move indicator)
     setLastMoveSquares(restoredLast || null);
     setGameStatus('playing');
 
@@ -671,13 +664,11 @@ function App() {
     toast.success(`Took back ${movesToUndo} move${movesToUndo > 1 ? 's' : ''}`);
   }, [chess, moveHistory, isThinking, difficulty, clearPendingTimers]);
 
-  const changeDifficulty = (newDiff: Difficulty) => {
+  const changeDifficulty = useCallback((newDiff: Difficulty) => {
     if (newDiff === difficulty && moveHistory.length > 0) return;
     resetGame(newDiff);
     toast.success(`Switched to ${DIFFICULTY_CONFIG[newDiff].label}`);
-  };
-
-
+  }, [difficulty, moveHistory.length, resetGame]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -690,25 +681,33 @@ function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [takeBack, resetGame]);
+  }, [takeBack, resetGame, changeDifficulty]);
+
+  const streamingInsight = useMemo(() => {
+    for (let i = coachInsights.length - 1; i >= 0; i -= 1) {
+      const insight = coachInsights[i];
+      if (insight.streaming && insight.fullText) return insight;
+    }
+    return null;
+  }, [coachInsights]);
 
   // Streaming for recommendations
   useEffect(() => {
-    const latest = [...coachInsights].reverse().find(i => i.streaming);
-    if (!latest || !latest.fullText) return;
-    const fullText = latest.fullText;
+    if (!streamingInsight?.fullText) return;
+
+    const { id: insightId, fullText } = streamingInsight;
     let currentIndex = 0;
     const interval = setInterval(() => {
       currentIndex += 3;
       const partial = fullText.slice(0, Math.min(currentIndex, fullText.length));
-      setCoachInsights(prev => prev.map(insight => insight.id === latest.id ? { ...insight, text: partial } : insight));
+      setCoachInsights(prev => prev.map(insight => insight.id === insightId ? { ...insight, text: partial } : insight));
       if (currentIndex >= fullText.length) {
         clearInterval(interval);
-        setCoachInsights(prev => prev.map(insight => insight.id === latest.id ? { ...insight, streaming: false, text: fullText } : insight));
+        setCoachInsights(prev => prev.map(insight => insight.id === insightId ? { ...insight, streaming: false, text: fullText } : insight));
       }
     }, 18);
     return () => clearInterval(interval);
-  }, [coachInsights.length]);
+  }, [streamingInsight]);
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#020206] text-[#c8c8d0] font-sans pb-[env(safe-area-inset-bottom)]">
