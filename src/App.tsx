@@ -521,9 +521,10 @@ function App() {
     return true;
   }, [chess, difficulty, moveHistory, isGameOver, isThinking]);
 
-  const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square): boolean => {
+  const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square, piece?: string): boolean => {
     if (chess.turn() !== 'w') { toast.error("It's not your turn"); return false; }
-    return makeMove(sourceSquare, targetSquare);
+    // piece is provided by react-chessboard when using the built-in promotion dialog (e.g. 'q', 'r', 'b', 'n')
+    return makeMove(sourceSquare, targetSquare, piece as 'q' | 'r' | 'b' | 'n' | undefined);
   }, [chess, makeMove]);
 
   const takeBack = useCallback(() => {
@@ -738,6 +739,7 @@ function App() {
             onPieceDrop={onPieceDrop}
             boardOrientation="white"
             arePiecesDraggable={!isGameOver && !isThinking && chess.turn() === 'w'}
+            autoPromoteToQueen={false}
 
             customBoardStyle={{
               borderRadius: '4px',
