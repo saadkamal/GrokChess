@@ -200,6 +200,34 @@ function applyChessMove(
   }
 }
 
+function pickRandomLegalMove(fen: string): Move | null {
+  const trial = new Chess(fen);
+  const legal = trial.moves({ verbose: true }) as Move[];
+  if (legal.length === 0) return null;
+  return legal[Math.floor(Math.random() * legal.length)];
+}
+
+function resolveAiMove(
+  fen: string,
+  engineMove: EngineMove | null,
+): { move: Move; fen: string; usedFallback: boolean } | null {
+  const trial = new Chess(fen);
+  if (engineMove) {
+    const applied = applyChessMove(trial, engineMove);
+    if (applied) return { move: applied, fen: trial.fen(), usedFallback: false };
+  }
+  const fallback = pickRandomLegalMove(fen);
+  if (!fallback) return null;
+  trial.load(fen);
+  const applied = applyChessMove(trial, {
+    from: fallback.from,
+    to: fallback.to,
+    promotion: fallback.promotion as PromotionPiece | undefined,
+  });
+  if (!applied) return null;
+  return { move: applied, fen: trial.fen(), usedFallback: !!engineMove };
+}
+
 async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<EngineMove | null> {
   if (difficulty === 'easy') {
     return getBestMove(fen, difficulty);
@@ -265,7 +293,7 @@ function describeMoveInPlainEnglish(move: { piece?: string; to: Square; san?: st
   return `Push a pawn to ${toSquare} — the square on ${squareDesc}.`;
 }
 
-function getBetterMoveWhy(chess: Chess, rec: { from: Square; to: Square; san: string }): string {
+function getBetterMoveWhy(chess: Chess, rec: { from: Square; to: Square; san: string; promotion?: PromotionPiece }): string {
   const before = new Chess(chess.fen());
   const piece = before.get(rec.from);
   if (!piece) return "This improves your position.";
@@ -274,7 +302,7 @@ function getBetterMoveWhy(chess: Chess, rec: { from: Square; to: Square; san: st
   const reasons: string[] = [];
   const targetOnArrival = chess.get(rec.to);
   if (targetOnArrival) reasons.push(`captures the ${getPieceFullName(targetOnArrival.type)} on ${rec.to}`);
-  before.move({ from: rec.from, to: rec.to });
+  before.move({ from: rec.from, to: rec.to, promotion: rec.promotion });
   if (['n', 'b', 'r', 'q'].includes(piece.type)) {
     const startingRank = isWhite ? '1' : '8';
     if (rec.from[1] === startingRank) reasons.push("develops a piece that was still on the back rank");
@@ -492,47 +520,63 @@ function App() {
       if (generation !== gameGenerationRef.current) return;
 
       try {
-        const aiResult = await getBestMoveSmart(chess.fen(), difficulty);
+        const fenBeforeAi = chess.fen();
+        const aiResult = await getBestMoveSmart(fenBeforeAi, difficulty);
         if (generation !== gameGenerationRef.current) return;
 
-        if (aiResult) {
-          const trial = new Chess(chess.fen());
-          const aiMove = applyChessMove(trial, aiResult);
-          if (!aiMove || generation !== gameGenerationRef.current) return;
+        const resolved = resolveAiMove(fenBeforeAi, aiResult);
+        if (!resolved) {
+          chess.undo();
+          setFen(chess.fen());
+          setMoveHistory(newHistory.slice(0, -1));
+          setLastMoveSquares(newHistory.length > 1
+            ? { from: newHistory[newHistory.length - 2].from, to: newHistory[newHistory.length - 2].to }
+            : null);
+          toast.error('AI could not respond — your move was undone.');
+          return;
+        }
 
-          chess.load(trial.fen());
+        if (resolved.usedFallback) {
+          toast.warning('Engine hiccup — played a legal move instead.');
+        }
 
-          setLastMoveSquares(null);
+        const aiMove = resolved.move;
+        chess.load(resolved.fen);
+
+        setLastMoveSquares(null);
+        setRecommendationHighlights(null);
+
+        const updatedFen = chess.fen();
+        const updatedHistory = [...newHistory, aiMove];
+        setFen(updatedFen);
+        setMoveHistory(updatedHistory);
+        requestAnimationFrame(() => {
+          if (generation !== gameGenerationRef.current) return;
+          setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
           setRecommendationHighlights(null);
+        });
 
-          const updatedFen = chess.fen();
-          const updatedHistory = [...newHistory, aiMove];
-          setFen(updatedFen);
-          setMoveHistory(updatedHistory);
-          requestAnimationFrame(() => {
-            if (generation !== gameGenerationRef.current) return;
-            setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
-            setRecommendationHighlights(null);
-          });
+        const aiInsight = generateCoachInsight(chess, aiMove, false, difficulty, false);
+        aiInsight.createdAtMove = updatedHistory.length;
+        setCoachInsights(prev => [...prev, aiInsight]);
 
-          const aiInsight = generateCoachInsight(chess, aiMove, false, difficulty, false);
-          aiInsight.createdAtMove = updatedHistory.length;
-          setCoachInsights(prev => [...prev, aiInsight]);
-
-          const recommendationGeneration = gameGenerationRef.current;
-          pendingRecommendationTimeoutRef.current = setTimeout(async () => {
+        const recommendationGeneration = gameGenerationRef.current;
+        const fenForRecommendation = chess.fen();
+        pendingRecommendationTimeoutRef.current = setTimeout(async () => {
             pendingRecommendationTimeoutRef.current = null;
             if (recommendationGeneration !== gameGenerationRef.current) return;
 
-            const fastAnalysisPromise = getFastAnalysis(chess.fen());
+            const fastAnalysisPromise = getFastAnalysis(fenForRecommendation);
             const timeoutPromise = new Promise<FastAnalysisResult | null>((resolve) => setTimeout(() => resolve(null), 1800));
             let analysis: FastAnalysisResult | null = await Promise.race([fastAnalysisPromise, timeoutPromise]);
 
             if (recommendationGeneration !== gameGenerationRef.current) return;
+            if (chess.fen() !== fenForRecommendation) return;
 
             if (!analysis?.bestMove) {
-              const fallback = await getBestMoveSmart(chess.fen(), difficulty);
+              const fallback = await getBestMoveSmart(fenForRecommendation, difficulty);
               if (recommendationGeneration !== gameGenerationRef.current) return;
+              if (chess.fen() !== fenForRecommendation) return;
               if (fallback?.from && fallback?.to) {
                 analysis = {
                   bestMove: fallback.from + fallback.to + (fallback.promotion ?? ''),
@@ -549,7 +593,7 @@ function App() {
               const actualPiece = chess.get(fromSq)?.type;
               const targetPiece = chess.get(toSq);
 
-              const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece };
+              const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece, promotion: parsed.promotion };
               const plainEnglish = targetPiece
                 ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
                 : describeMoveInPlainEnglish(rec);
@@ -572,7 +616,6 @@ function App() {
               setCoachInsights(prev => [...prev, suggestionInsight]);
             }
           }, 420);
-        }
 
         if (generation === gameGenerationRef.current && chess.isGameOver()) {
           const status = chess.isCheckmate() ? (chess.turn() === 'w' ? 'black-wins' : 'white-wins') : 'draw';
@@ -646,12 +689,15 @@ function App() {
     if (chess.turn() === 'w' && !isThinking) {
       setRecommendationHighlights(null);
       const generation = gameGenerationRef.current;
+      const fenAtTakeback = chess.fen();
       pendingTakebackTimeoutRef.current = setTimeout(async () => {
         pendingTakebackTimeoutRef.current = null;
         if (generation !== gameGenerationRef.current) return;
+        if (chess.fen() !== fenAtTakeback) return;
 
-        const recommendation = await getBestMoveSmart(chess.fen(), difficulty);
+        const recommendation = await getBestMoveSmart(fenAtTakeback, difficulty);
         if (generation !== gameGenerationRef.current) return;
+        if (chess.fen() !== fenAtTakeback) return;
 
         if (recommendation?.from && recommendation?.to && !chess.isGameOver()) {
           const fromSq = recommendation.from;
@@ -698,19 +744,23 @@ function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [takeBack, resetGame, changeDifficulty]);
 
-  const streamingInsight = useMemo(() => {
-    for (let i = coachInsights.length - 1; i >= 0; i -= 1) {
-      const insight = coachInsights[i];
-      if (insight.streaming && insight.fullText) return insight;
+  let streamingInsightId: number | undefined;
+  let streamingFullText: string | undefined;
+  for (let i = coachInsights.length - 1; i >= 0; i -= 1) {
+    const insight = coachInsights[i];
+    if (insight.streaming && insight.fullText) {
+      streamingInsightId = insight.id;
+      streamingFullText = insight.fullText;
+      break;
     }
-    return null;
-  }, [coachInsights]);
+  }
 
-  // Streaming for recommendations
+  // Streaming for recommendations — depend on stable id/text, not partial text updates
   useEffect(() => {
-    if (!streamingInsight?.fullText) return;
+    if (!streamingInsightId || !streamingFullText) return;
 
-    const { id: insightId, fullText } = streamingInsight;
+    const insightId = streamingInsightId;
+    const fullText = streamingFullText;
     let currentIndex = 0;
     const interval = setInterval(() => {
       currentIndex += 3;
@@ -722,7 +772,7 @@ function App() {
       }
     }, 18);
     return () => clearInterval(interval);
-  }, [streamingInsight]);
+  }, [streamingInsightId, streamingFullText]);
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#020206] text-[#c8c8d0] font-sans pb-[env(safe-area-inset-bottom)]">
