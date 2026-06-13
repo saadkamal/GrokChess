@@ -410,8 +410,26 @@ function App() {
   const [lastMoveSquares, setLastMoveSquares] = useState<{ from: Square; to: Square } | null>(null);
   const [isCoachOpen, setIsCoachOpen] = useState(true); // Collapsible on mobile
 
-  // Ref to hold the pending recommendation timeout ID so we can cancel it on new moves (prevents ghosting)
+  // Refs to cancel pending async work (prevents ghost moves, highlights, and coach text)
+  const pendingAiMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRecommendationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTakebackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameGenerationRef = useRef(0);
+
+  const clearPendingTimers = useCallback(() => {
+    if (pendingAiMoveTimeoutRef.current) {
+      clearTimeout(pendingAiMoveTimeoutRef.current);
+      pendingAiMoveTimeoutRef.current = null;
+    }
+    if (pendingRecommendationTimeoutRef.current) {
+      clearTimeout(pendingRecommendationTimeoutRef.current);
+      pendingRecommendationTimeoutRef.current = null;
+    }
+    if (pendingTakebackTimeoutRef.current) {
+      clearTimeout(pendingTakebackTimeoutRef.current);
+      pendingTakebackTimeoutRef.current = null;
+    }
+  }, []);
 
   const isGameOver = gameStatus !== 'playing';
 
@@ -423,6 +441,8 @@ function App() {
 
   const resetGame = useCallback((newDifficulty?: Difficulty) => {
     const d = newDifficulty || difficulty;
+    gameGenerationRef.current += 1;
+    clearPendingTimers();
     chess.reset();
     setFen(chess.fen());
     setMoveHistory([]);
@@ -431,10 +451,6 @@ function App() {
     setIsThinking(false);
     setRecommendationHighlights(null);
     setLastMoveSquares(null);
-    if (pendingRecommendationTimeoutRef.current) {
-      clearTimeout(pendingRecommendationTimeoutRef.current);
-      pendingRecommendationTimeoutRef.current = null;
-    }
     setCoachInsights([{
       id: Date.now(),
       text: `New game — ${DIFFICULTY_CONFIG[d].label}. I will show the best move and explain exactly why after every turn.`,
@@ -442,7 +458,7 @@ function App() {
       timestamp: new Date(),
     }]);
     if (newDifficulty) setDifficulty(d);
-  }, [chess, difficulty]);
+  }, [chess, difficulty, clearPendingTimers]);
 
   const makeMove = useCallback((from: Square, to: Square, promotion?: 'q' | 'r' | 'b' | 'n'): boolean => {
     if (isGameOver || isThinking) return false;
@@ -458,12 +474,7 @@ function App() {
     setRecommendationHighlights(null);
     setLastMoveSquares({ from: move.from, to: move.to });
 
-    // Cancel any in-flight recommendation timer from the *previous* opponent move.
-    // Cancel any pending recommendation timer so old suggestions don't leak after takeback
-    if (pendingRecommendationTimeoutRef.current) {
-      clearTimeout(pendingRecommendationTimeoutRef.current);
-      pendingRecommendationTimeoutRef.current = null;
-    }
+    clearPendingTimers();
 
     const insight = generateCoachInsight(chess, move, true, difficulty);
     insight.createdAtMove = newHistory.length;
@@ -476,103 +487,107 @@ function App() {
     }
 
     setIsThinking(true);
-    setTimeout(async () => {
+    const generation = gameGenerationRef.current;
+    pendingAiMoveTimeoutRef.current = setTimeout(async () => {
+      pendingAiMoveTimeoutRef.current = null;
+      if (generation !== gameGenerationRef.current) return;
+
       try {
         const aiResult = await getBestMoveSmart(chess.fen(), difficulty);
+        if (generation !== gameGenerationRef.current) return;
+
         if (aiResult) {
           const aiMove = applyChessMove(chess, aiResult);
 
           if (aiMove) {
-          // Clear highlights before applying AI move to prevent visual ghosting during animation
-          setLastMoveSquares(null);
-          setRecommendationHighlights(null);
-
-          const updatedFen = chess.fen();
-          const updatedHistory = [...newHistory, aiMove];
-          setFen(updatedFen);
-          setMoveHistory(updatedHistory);
-          setLastMove({ from: aiMove.from, to: aiMove.to });
-
-          // Restore only the last-move red for Black on the next frame (rec cyan remains off until coach decides).
-          requestAnimationFrame(() => {
-            setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
-            // Extra belt-and-suspenders null for rec cyan in case any batched update was pending
+            setLastMoveSquares(null);
             setRecommendationHighlights(null);
-          });
 
-          const aiInsight = generateCoachInsight(chess, aiMove, false, difficulty, false);
-          aiInsight.createdAtMove = updatedHistory.length;
-          setCoachInsights(prev => [...prev, aiInsight]);
+            const updatedFen = chess.fen();
+            const updatedHistory = [...newHistory, aiMove];
+            setFen(updatedFen);
+            setMoveHistory(updatedHistory);
+            setLastMove({ from: aiMove.from, to: aiMove.to });
 
-          // Cancel any previous pending recommendation timeout
-          if (pendingRecommendationTimeoutRef.current) {
-            clearTimeout(pendingRecommendationTimeoutRef.current);
-          }
+            requestAnimationFrame(() => {
+              if (generation !== gameGenerationRef.current) return;
+              setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
+              setRecommendationHighlights(null);
+            });
 
-          pendingRecommendationTimeoutRef.current = setTimeout(async () => {
-            const fastAnalysisPromise = getFastAnalysis(chess.fen());
-            const timeoutPromise = new Promise<FastAnalysisResult | null>((resolve) => setTimeout(() => resolve(null), 1800));
-            let analysis: FastAnalysisResult | null = await Promise.race([fastAnalysisPromise, timeoutPromise]);
+            const aiInsight = generateCoachInsight(chess, aiMove, false, difficulty, false);
+            aiInsight.createdAtMove = updatedHistory.length;
+            setCoachInsights(prev => [...prev, aiInsight]);
 
-            if (!analysis?.bestMove) {
-              const fallback = await getBestMoveSmart(chess.fen(), difficulty);
-              if (fallback?.from && fallback?.to) {
-                analysis = {
-                  bestMove: fallback.from + fallback.to + (fallback.promotion ?? ''),
-                  multiPV: [],
-                };
+            const recommendationGeneration = gameGenerationRef.current;
+            pendingRecommendationTimeoutRef.current = setTimeout(async () => {
+              pendingRecommendationTimeoutRef.current = null;
+              if (recommendationGeneration !== gameGenerationRef.current) return;
+
+              const fastAnalysisPromise = getFastAnalysis(chess.fen());
+              const timeoutPromise = new Promise<FastAnalysisResult | null>((resolve) => setTimeout(() => resolve(null), 1800));
+              let analysis: FastAnalysisResult | null = await Promise.race([fastAnalysisPromise, timeoutPromise]);
+
+              if (recommendationGeneration !== gameGenerationRef.current) return;
+
+              if (!analysis?.bestMove) {
+                const fallback = await getBestMoveSmart(chess.fen(), difficulty);
+                if (recommendationGeneration !== gameGenerationRef.current) return;
+                if (fallback?.from && fallback?.to) {
+                  analysis = {
+                    bestMove: fallback.from + fallback.to + (fallback.promotion ?? ''),
+                    multiPV: [],
+                  };
+                }
               }
-            }
 
-            if (analysis?.bestMove && !chess.isGameOver()) {
-              const parsed = parseUciMove(analysis.bestMove);
-              if (!parsed) return;
+              if (analysis?.bestMove && !chess.isGameOver()) {
+                const parsed = parseUciMove(analysis.bestMove);
+                if (!parsed) return;
 
-              const { from: fromSq, to: toSq } = parsed;
-              const actualPiece = chess.get(fromSq)?.type;
-              const targetPiece = chess.get(toSq);
+                const { from: fromSq, to: toSq } = parsed;
+                const actualPiece = chess.get(fromSq)?.type;
+                const targetPiece = chess.get(toSq);
 
-              const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece };
-              const plainEnglish = targetPiece 
-                ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
-                : describeMoveInPlainEnglish(rec);
+                const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece };
+                const plainEnglish = targetPiece
+                  ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
+                  : describeMoveInPlainEnglish(rec);
 
-              const why = getBetterMoveWhy(chess, rec);
-              const text = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
+                const why = getBetterMoveWhy(chess, rec);
+                const text = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
 
-              // Set the new recommendation (bright cyan).
-              // At the same moment, clear the previous Black last-move red highlight.
-              // Once the coach is actively telling you your next move, Black's just-played red should no longer be ghosting the board.
-              setRecommendationHighlights([fromSq, toSq]);
-              setLastMoveSquares(null);
+                setRecommendationHighlights([fromSq, toSq]);
+                setLastMoveSquares(null);
 
-              const suggestionInsight: CoachInsight = {
-                id: Date.now() + 1,
-                text: '',
-                fullText: text,
-                streaming: true,
-                isPlayerMove: true,
-                timestamp: new Date(),
-                createdAtMove: updatedHistory.length,
-              };
-              setCoachInsights(prev => [...prev, suggestionInsight]);
-            }
-
-            pendingRecommendationTimeoutRef.current = null;
-          }, 420);
+                const suggestionInsight: CoachInsight = {
+                  id: Date.now() + 1,
+                  text: '',
+                  fullText: text,
+                  streaming: true,
+                  isPlayerMove: true,
+                  timestamp: new Date(),
+                  createdAtMove: updatedHistory.length,
+                };
+                setCoachInsights(prev => [...prev, suggestionInsight]);
+              }
+            }, 420);
           }
         }
-        if (chess.isGameOver()) {
+
+        if (generation === gameGenerationRef.current && chess.isGameOver()) {
           const status = chess.isCheckmate() ? (chess.turn() === 'w' ? 'black-wins' : 'white-wins') : 'draw';
           setGameStatus(status);
         }
       } finally {
-        setIsThinking(false);
+        if (generation === gameGenerationRef.current) {
+          setIsThinking(false);
+        }
       }
     }, difficulty === 'hard' ? 650 : 420);
 
     return true;
-  }, [chess, difficulty, moveHistory, isGameOver, isThinking]);
+  }, [chess, difficulty, moveHistory, isGameOver, isThinking, clearPendingTimers]);
 
   const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square, piece?: string): boolean => {
     if (chess.turn() !== 'w') { toast.error("It's not your turn"); return false; }
@@ -582,6 +597,9 @@ function App() {
 
   const takeBack = useCallback(() => {
     if (moveHistory.length === 0 || isThinking) return;
+    gameGenerationRef.current += 1;
+    clearPendingTimers();
+
     const movesToUndo = Math.min(2, moveHistory.length);
     for (let i = 0; i < movesToUndo; i++) chess.undo();
     const newHistory = moveHistory.slice(0, -movesToUndo);
@@ -593,11 +611,6 @@ function App() {
     void lastMove; // used for potential future UI (last move indicator)
     setLastMoveSquares(restoredLast || null);
     setGameStatus('playing');
-
-    if (pendingRecommendationTimeoutRef.current) {
-      clearTimeout(pendingRecommendationTimeoutRef.current);
-      pendingRecommendationTimeoutRef.current = null;
-    }
 
     // Prune coach history back to the position we landed on after the take-back.
     // Keep previous conversation instead of nuking the entire chat.
@@ -624,8 +637,14 @@ function App() {
 
     if (chess.turn() === 'w' && !isThinking) {
       setRecommendationHighlights(null);
-      setTimeout(async () => {
+      const generation = gameGenerationRef.current;
+      pendingTakebackTimeoutRef.current = setTimeout(async () => {
+        pendingTakebackTimeoutRef.current = null;
+        if (generation !== gameGenerationRef.current) return;
+
         const recommendation = await getBestMoveSmart(chess.fen(), difficulty);
+        if (generation !== gameGenerationRef.current) return;
+
         if (recommendation?.from && recommendation?.to && !chess.isGameOver()) {
           const fromSq = recommendation.from;
           const toSq = recommendation.to;
@@ -650,7 +669,7 @@ function App() {
       }, 200);
     }
     toast.success(`Took back ${movesToUndo} move${movesToUndo > 1 ? 's' : ''}`);
-  }, [chess, moveHistory, isThinking, difficulty]);
+  }, [chess, moveHistory, isThinking, difficulty, clearPendingTimers]);
 
   const changeDifficulty = (newDiff: Difficulty) => {
     if (newDiff === difficulty && moveHistory.length > 0) return;
