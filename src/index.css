@@ -365,24 +365,24 @@ h1, h2, h3, .display {
 /* Make black pieces more visible on the very dark squares without changing the pieces themselves */
 /* Strong, reliable white outline + light cyan glow specifically for black pieces on the dark board.
    Targets the actual piece elements more explicitly so the effect actually shows. */
-/* Reliable white border on black pieces.
+/* Reliable white border on black pieces only.
    react-chessboard puts data-piece="bK", "bP", etc. directly on the piece divs.
-   We target any element whose data-piece starts with "b". */
-[data-piece^="w"], [data-piece^="b"] {
-  /* Thin white border + very subtle cyan glow */
-  filter: 
+   Do NOT apply filter to white pieces — it breaks transform-based positioning in
+   WebKit/Safari and causes pieces to pile up in the board corner. */
+.react-chessboard [data-piece^="b"] {
+  filter:
     drop-shadow(0.5px 0 0 #fff)
     drop-shadow(-0.5px 0 0 #fff)
     drop-shadow(0 0.5px 0 #fff)
     drop-shadow(0 -0.5px 0 #fff)
-    drop-shadow(0 0 1.5px #00e5ff) !important;
+    drop-shadow(0 0 1.5px #00e5ff);
 
-  -webkit-filter: 
+  -webkit-filter:
     drop-shadow(0.5px 0 0 #fff)
     drop-shadow(-0.5px 0 0 #fff)
     drop-shadow(0 0.5px 0 #fff)
     drop-shadow(0 -0.5px 0 #fff)
-    drop-shadow(0 0 1.5px #00e5ff) !important;
+    drop-shadow(0 0 1.5px #00e5ff);
 }
 
 /* ============================================================

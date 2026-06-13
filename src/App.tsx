@@ -393,6 +393,7 @@ const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
 function App() {
   const [chess] = useState(() => new Chess());
   const [fen, setFen] = useState(chess.fen());
+  const [boardRenderKey, setBoardRenderKey] = useState(0);
   const [moveHistory, setMoveHistory] = useState<Move[]>([]);
 
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
@@ -445,6 +446,7 @@ function App() {
     clearPendingTimers();
     chess.reset();
     setFen(chess.fen());
+    setBoardRenderKey((k) => k + 1);
     setMoveHistory([]);
     setGameStatus('playing');
     setIsThinking(false);
@@ -494,80 +496,82 @@ function App() {
         if (generation !== gameGenerationRef.current) return;
 
         if (aiResult) {
-          const aiMove = applyChessMove(chess, aiResult);
+          const trial = new Chess(chess.fen());
+          const aiMove = applyChessMove(trial, aiResult);
+          if (!aiMove || generation !== gameGenerationRef.current) return;
 
-          if (aiMove) {
-            setLastMoveSquares(null);
+          chess.load(trial.fen());
+
+          setLastMoveSquares(null);
+          setRecommendationHighlights(null);
+
+          const updatedFen = chess.fen();
+          const updatedHistory = [...newHistory, aiMove];
+          setFen(updatedFen);
+          setMoveHistory(updatedHistory);
+          requestAnimationFrame(() => {
+            if (generation !== gameGenerationRef.current) return;
+            setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
             setRecommendationHighlights(null);
+          });
 
-            const updatedFen = chess.fen();
-            const updatedHistory = [...newHistory, aiMove];
-            setFen(updatedFen);
-            setMoveHistory(updatedHistory);
-            requestAnimationFrame(() => {
-              if (generation !== gameGenerationRef.current) return;
-              setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
-              setRecommendationHighlights(null);
-            });
+          const aiInsight = generateCoachInsight(chess, aiMove, false, difficulty, false);
+          aiInsight.createdAtMove = updatedHistory.length;
+          setCoachInsights(prev => [...prev, aiInsight]);
 
-            const aiInsight = generateCoachInsight(chess, aiMove, false, difficulty, false);
-            aiInsight.createdAtMove = updatedHistory.length;
-            setCoachInsights(prev => [...prev, aiInsight]);
+          const recommendationGeneration = gameGenerationRef.current;
+          pendingRecommendationTimeoutRef.current = setTimeout(async () => {
+            pendingRecommendationTimeoutRef.current = null;
+            if (recommendationGeneration !== gameGenerationRef.current) return;
 
-            const recommendationGeneration = gameGenerationRef.current;
-            pendingRecommendationTimeoutRef.current = setTimeout(async () => {
-              pendingRecommendationTimeoutRef.current = null;
+            const fastAnalysisPromise = getFastAnalysis(chess.fen());
+            const timeoutPromise = new Promise<FastAnalysisResult | null>((resolve) => setTimeout(() => resolve(null), 1800));
+            let analysis: FastAnalysisResult | null = await Promise.race([fastAnalysisPromise, timeoutPromise]);
+
+            if (recommendationGeneration !== gameGenerationRef.current) return;
+
+            if (!analysis?.bestMove) {
+              const fallback = await getBestMoveSmart(chess.fen(), difficulty);
               if (recommendationGeneration !== gameGenerationRef.current) return;
-
-              const fastAnalysisPromise = getFastAnalysis(chess.fen());
-              const timeoutPromise = new Promise<FastAnalysisResult | null>((resolve) => setTimeout(() => resolve(null), 1800));
-              let analysis: FastAnalysisResult | null = await Promise.race([fastAnalysisPromise, timeoutPromise]);
-
-              if (recommendationGeneration !== gameGenerationRef.current) return;
-
-              if (!analysis?.bestMove) {
-                const fallback = await getBestMoveSmart(chess.fen(), difficulty);
-                if (recommendationGeneration !== gameGenerationRef.current) return;
-                if (fallback?.from && fallback?.to) {
-                  analysis = {
-                    bestMove: fallback.from + fallback.to + (fallback.promotion ?? ''),
-                    multiPV: [],
-                  };
-                }
-              }
-
-              if (analysis?.bestMove && !chess.isGameOver()) {
-                const parsed = parseUciMove(analysis.bestMove);
-                if (!parsed) return;
-
-                const { from: fromSq, to: toSq } = parsed;
-                const actualPiece = chess.get(fromSq)?.type;
-                const targetPiece = chess.get(toSq);
-
-                const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece };
-                const plainEnglish = targetPiece
-                  ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
-                  : describeMoveInPlainEnglish(rec);
-
-                const why = getBetterMoveWhy(chess, rec);
-                const text = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
-
-                setRecommendationHighlights([fromSq, toSq]);
-                setLastMoveSquares(null);
-
-                const suggestionInsight: CoachInsight = {
-                  id: Date.now() + 1,
-                  text: '',
-                  fullText: text,
-                  streaming: true,
-                  isPlayerMove: true,
-                  timestamp: new Date(),
-                  createdAtMove: updatedHistory.length,
+              if (fallback?.from && fallback?.to) {
+                analysis = {
+                  bestMove: fallback.from + fallback.to + (fallback.promotion ?? ''),
+                  multiPV: [],
                 };
-                setCoachInsights(prev => [...prev, suggestionInsight]);
               }
-            }, 420);
-          }
+            }
+
+            if (analysis?.bestMove && !chess.isGameOver()) {
+              const parsed = parseUciMove(analysis.bestMove);
+              if (!parsed) return;
+
+              const { from: fromSq, to: toSq } = parsed;
+              const actualPiece = chess.get(fromSq)?.type;
+              const targetPiece = chess.get(toSq);
+
+              const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece };
+              const plainEnglish = targetPiece
+                ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
+                : describeMoveInPlainEnglish(rec);
+
+              const why = getBetterMoveWhy(chess, rec);
+              const text = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
+
+              setRecommendationHighlights([fromSq, toSq]);
+              setLastMoveSquares(null);
+
+              const suggestionInsight: CoachInsight = {
+                id: Date.now() + 1,
+                text: '',
+                fullText: text,
+                streaming: true,
+                isPlayerMove: true,
+                timestamp: new Date(),
+                createdAtMove: updatedHistory.length,
+              };
+              setCoachInsights(prev => [...prev, suggestionInsight]);
+            }
+          }, 420);
         }
 
         if (generation === gameGenerationRef.current && chess.isGameOver()) {
@@ -600,6 +604,7 @@ function App() {
     const newHistory = moveHistory.slice(0, -movesToUndo);
     const newFen = chess.fen();
     setFen(newFen);
+    setBoardRenderKey((k) => k + 1);
     setMoveHistory(newHistory);
     const restoredLast = newHistory.length > 0 ? { from: newHistory[newHistory.length-1].from, to: newHistory[newHistory.length-1].to } : undefined;
     setLastMoveSquares(restoredLast || null);
@@ -806,8 +811,10 @@ function App() {
           }}
         >
           <Chessboard
+            key={boardRenderKey}
             position={fen}
             onPieceDrop={onPieceDrop}
+            animationDuration={200}
             boardOrientation="white"
             arePiecesDraggable={!isGameOver && !isThinking && chess.turn() === 'w'}
             autoPromoteToQueen={false}
