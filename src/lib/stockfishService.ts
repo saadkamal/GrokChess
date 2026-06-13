@@ -3,28 +3,72 @@
 let worker: Worker | null = null;
 const listeners: ((line: string) => void)[] = [];
 
-let currentResolve: ((result: any) => void) | null = null;
-let currentBestMove: string | null = null;
+type StockfishResult = {
+  bestMove: string;
+  eval: number;
+  pv?: string;
+  multiPV?: Array<{ move: string; eval: number; pv: string }>;
+};
+
+type PendingRequest = {
+  fen: string;
+  skillLevel: number;
+  options: { depth?: number; movetime?: number; multiPV?: number };
+  resolve: (result: StockfishResult) => void;
+};
+
+const requestQueue: PendingRequest[] = [];
+let activeRequest: PendingRequest | null = null;
 let currentEval: number | null = null;
 let currentPV: string | null = null;
 let multiPVResults: Array<{ move: string; eval: number; pv: string }> = [];
 
+function finishActiveRequest(bestMove: string) {
+  if (!activeRequest) return;
+
+  activeRequest.resolve({
+    bestMove,
+    eval: currentEval ?? 0,
+    pv: currentPV ?? undefined,
+    multiPV: multiPVResults.length > 0 ? [...multiPVResults] : undefined,
+  });
+
+  activeRequest = null;
+  currentEval = null;
+  currentPV = null;
+  multiPVResults = [];
+  processNextRequest();
+}
+
+function processNextRequest() {
+  if (activeRequest || requestQueue.length === 0 || !worker) return;
+
+  activeRequest = requestQueue.shift()!;
+  currentEval = null;
+  currentPV = null;
+  multiPVResults = [];
+
+  const { fen, skillLevel, options } = activeRequest;
+  const { depth, movetime, multiPV = 1 } = options;
+
+  sendCommand(`setoption name Skill Level value ${skillLevel}`);
+  sendCommand(`setoption name MultiPV value ${multiPV}`);
+  sendCommand(`position fen ${fen}`);
+
+  if (movetime) {
+    sendCommand(`go movetime ${movetime}`);
+  } else {
+    sendCommand(`go depth ${depth || 15}`);
+  }
+}
+
 function handleMessage(line: string) {
   if (line.startsWith('bestmove')) {
     const parts = line.split(' ');
-    currentBestMove = parts[1];
-
-    if (currentResolve) {
-      currentResolve({
-        bestMove: currentBestMove,
-        eval: currentEval,
-        pv: currentPV,
-        multiPV: multiPVResults,
-      });
-      currentResolve = null;
-      multiPVResults = [];
-    }
+    finishActiveRequest(parts[1] ?? '');
   }
+
+  if (!activeRequest) return;
 
   if (line.includes('score cp')) {
     const match = line.match(/score cp (-?\d+)/);
@@ -36,7 +80,6 @@ function handleMessage(line: string) {
     if (pvMatch) currentPV = pvMatch[1];
   }
 
-  // MultiPV support
   if (line.includes('multipv')) {
     const multiMatch = line.match(/multipv (\d+)/);
     const scoreMatch = line.match(/score cp (-?\d+)/);
@@ -84,40 +127,18 @@ export function sendCommand(cmd: string) {
 }
 
 export function getBestMove(
-  fen: string, 
-  skillLevel = 20, 
+  fen: string,
+  skillLevel = 20,
   options: { depth?: number; movetime?: number; multiPV?: number } = {}
-): Promise<{
-  bestMove: string;
-  eval: number;
-  pv?: string;
-  multiPV?: Array<{ move: string; eval: number; pv: string }>;
-}> {
+): Promise<StockfishResult> {
   return new Promise((resolve) => {
     if (!worker) {
       resolve({ bestMove: 'e2e4', eval: 0 });
       return;
     }
 
-    currentResolve = resolve;
-    currentBestMove = null;
-    currentEval = null;
-    currentPV = null;
-    multiPVResults = [];
-
-    const { depth, movetime, multiPV = 1 } = options;
-
-    sendCommand(`setoption name Skill Level value ${skillLevel}`);
-    if (multiPV > 1) {
-      sendCommand(`setoption name MultiPV value ${multiPV}`);
-    }
-    sendCommand(`position fen ${fen}`);
-
-    if (movetime) {
-      sendCommand(`go movetime ${movetime}`);
-    } else {
-      sendCommand(`go depth ${depth || 15}`);
-    }
+    requestQueue.push({ fen, skillLevel, options, resolve });
+    processNextRequest();
   });
 }
 
@@ -125,7 +146,6 @@ export async function analyzePosition(fen: string, depth = 18) {
   return getBestMove(fen, 20, { depth, multiPV: 3 });
 }
 
-// Fast analysis for recommendations (time-based so it feels responsive)
 export async function getFastAnalysis(fen: string) {
   return getBestMove(fen, 20, { movetime: 1100, multiPV: 3 });
 }
