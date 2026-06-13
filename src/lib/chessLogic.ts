@@ -11,6 +11,16 @@
 import { Chess } from 'chess.js';
 import type { Square, Move } from 'chess.js';
 
+export type PromotionPiece = 'q' | 'r' | 'b' | 'n';
+
+/** react-chessboard promotion dialog passes piece codes like "wQ", not "q". */
+export function pieceCodeToPromotion(pieceCode?: string): PromotionPiece | undefined {
+  if (!pieceCode || pieceCode.length !== 2) return undefined;
+  const promo = pieceCode[1].toLowerCase();
+  if (promo === 'q' || promo === 'r' || promo === 'b' || promo === 'n') return promo;
+  return undefined;
+}
+
 export const PIECE_VALUES: Record<string, number> = {
   p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000,
 };
