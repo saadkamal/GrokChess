@@ -13,10 +13,27 @@ import {
   orderMoves,
   getBestMove,
   minimax,
+  pieceCodeToPromotion,
   PIECE_VALUES,
 } from './chessLogic';
 
 describe('chessLogic', () => {
+  describe('pieceCodeToPromotion', () => {
+    it('extracts promotion piece from react-chessboard codes', () => {
+      expect(pieceCodeToPromotion('wQ')).toBe('q');
+      expect(pieceCodeToPromotion('wR')).toBe('r');
+      expect(pieceCodeToPromotion('wB')).toBe('b');
+      expect(pieceCodeToPromotion('wN')).toBe('n');
+    });
+
+    it('returns undefined for non-promotion piece codes', () => {
+      expect(pieceCodeToPromotion('wP')).toBeUndefined();
+      expect(pieceCodeToPromotion('wK')).toBeUndefined();
+      expect(pieceCodeToPromotion(undefined)).toBeUndefined();
+      expect(pieceCodeToPromotion('queen')).toBeUndefined();
+    });
+  });
+
   describe('PIECE_VALUES', () => {
     it('assigns correct relative values', () => {
       expect(PIECE_VALUES.p).toBe(100);

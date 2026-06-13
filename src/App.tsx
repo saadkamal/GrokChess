@@ -16,7 +16,7 @@ import { RotateCcw, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { initStockfish, getBestMove as stockfishGetBestMove, getFastAnalysis } from './lib/stockfishService';
-import { getBestMove as getCustomBestMove } from './lib/chessLogic';
+import { getBestMove as getCustomBestMove, pieceCodeToPromotion } from './lib/chessLogic';
 
 import './App.css';
 
@@ -588,11 +588,21 @@ function App() {
     return true;
   }, [chess, difficulty, moveHistory, isGameOver, isThinking, clearPendingTimers]);
 
-  const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square, piece?: string): boolean => {
+  const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square): boolean => {
     if (chess.turn() !== 'w') { toast.error("It's not your turn"); return false; }
-    // piece is provided by react-chessboard when using the built-in promotion dialog (e.g. 'q', 'r', 'b', 'n')
-    return makeMove(sourceSquare, targetSquare, piece as 'q' | 'r' | 'b' | 'n' | undefined);
+    return makeMove(sourceSquare, targetSquare);
   }, [chess, makeMove]);
+
+  const onPromotionPieceSelect = useCallback((
+    piece?: string,
+    promoteFromSquare?: Square,
+    promoteToSquare?: Square,
+  ): boolean => {
+    if (!promoteFromSquare || !promoteToSquare) return false;
+    const promotion = pieceCodeToPromotion(piece);
+    if (!promotion) return false;
+    return makeMove(promoteFromSquare, promoteToSquare, promotion);
+  }, [makeMove]);
 
   const takeBack = useCallback(() => {
     if (moveHistory.length === 0 || isThinking) return;
@@ -814,6 +824,7 @@ function App() {
             key={boardRenderKey}
             position={fen}
             onPieceDrop={onPieceDrop}
+            onPromotionPieceSelect={onPromotionPieceSelect}
             animationDuration={200}
             boardOrientation="white"
             arePiecesDraggable={!isGameOver && !isThinking && chess.turn() === 'w'}
