@@ -1,6 +1,7 @@
 // Enhanced Stockfish Service with MultiPV + PV + Skill levels
 
 let worker: Worker | null = null;
+let initPromise: Promise<void> | null = null;
 const listeners: ((line: string) => void)[] = [];
 
 type StockfishResult = {
@@ -104,22 +105,21 @@ function handleMessage(line: string) {
 }
 
 export function initStockfish(): Promise<void> {
-  return new Promise((resolve) => {
-    if (worker) {
-      resolve();
-      return;
-    }
+  if (worker) return Promise.resolve();
+  if (!initPromise) {
+    initPromise = new Promise((resolve) => {
+      worker = new Worker(new URL('./stockfish.worker.ts', import.meta.url));
 
-    worker = new Worker(new URL('./stockfish.worker.ts', import.meta.url));
+      worker.onmessage = (e) => {
+        const { type, data } = e.data;
+        if (type === 'ready') resolve();
+        if (type === 'message') handleMessage(data);
+      };
 
-    worker.onmessage = (e) => {
-      const { type, data } = e.data;
-      if (type === 'ready') resolve();
-      if (type === 'message') handleMessage(data);
-    };
-
-    worker.postMessage({ type: 'init' });
-  });
+      worker.postMessage({ type: 'init' });
+    });
+  }
+  return initPromise;
 }
 
 export function sendCommand(cmd: string) {
@@ -152,4 +152,12 @@ export async function getFastAnalysis(fen: string) {
 
 export function setSkillLevel(level: number) {
   sendCommand(`setoption name Skill Level value ${Math.max(0, Math.min(20, level))}`);
+}
+
+export function destroyStockfish() {
+  if (worker) {
+    worker.terminate();
+    worker = null;
+  }
+  initPromise = null;
 }
