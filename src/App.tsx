@@ -15,7 +15,7 @@ import { Chessboard } from 'react-chessboard';
 import { RotateCcw, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { initStockfish, getBestMove as stockfishGetBestMove, getCoachAnalysis } from './lib/stockfishService';
+import { initStockfish, getBestMove as stockfishGetBestMove, resolveCoachRecommendation } from './lib/stockfishService';
 import { getBestMove as getCustomBestMove, pieceCodeToPromotion } from './lib/chessLogic';
 import { buildCoachRecommendationText } from './lib/coachText';
 
@@ -419,6 +419,11 @@ function App() {
   const pendingRecommendationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingTakebackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameGenerationRef = useRef(0);
+  const boardFenRef = useRef(fen);
+
+  useEffect(() => {
+    boardFenRef.current = fen;
+  }, [fen]);
 
   const clearPendingTimers = useCallback(() => {
     if (pendingAiMoveTimeoutRef.current) {
@@ -449,12 +454,22 @@ function App() {
     createdAtMove: number,
     loadingId?: number,
   ) => {
-    const isActive = () => gameGenerationRef.current === generation;
+    const isActive = () => gameGenerationRef.current === generation && boardFenRef.current === fen;
 
     if (!isActive()) return;
 
-    const analysis = await getCoachAnalysis(fen);
+    let analysis = await resolveCoachRecommendation(fen);
     if (!isActive()) return;
+
+    if (!analysis?.bestMove || analysis.bestMove === '(none)') {
+      const custom = getCustomBestMove(fen, 3);
+      if (custom) {
+        analysis = {
+          bestMove: `${custom.from}${custom.to}${custom.promotion ?? ''}`,
+          eval: custom.eval / 100,
+        };
+      }
+    }
 
     if (!analysis?.bestMove || analysis.bestMove === '(none)') {
       if (loadingId != null) {

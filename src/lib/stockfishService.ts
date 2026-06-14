@@ -147,18 +147,24 @@ export async function analyzePosition(fen: string, depth = 18) {
 }
 
 export async function getFastAnalysis(fen: string) {
-  return getBestMove(fen, 20, { movetime: 1100, multiPV: 3 });
+  return getBestMove(fen, 20, { movetime: 1100, multiPV: 1 });
 }
 
-/** Coach recommendations always use full-strength Stockfish — never the weak custom fallback. */
-export async function getCoachAnalysis(fen: string): Promise<StockfishResult | null> {
-  const primary = await getBestMove(fen, 20, { movetime: 1500, multiPV: 3 });
-  if (primary.bestMove && primary.bestMove !== '(none)') return primary;
+/** Coach recommendations: ensure Stockfish is ready, then analyze with fallbacks. */
+export async function resolveCoachRecommendation(fen: string): Promise<StockfishResult | null> {
+  await initStockfish().catch(() => {});
 
-  const retry = await getBestMove(fen, 20, { movetime: 2800, multiPV: 3 });
-  if (retry.bestMove && retry.bestMove !== '(none)') return retry;
+  for (const movetime of [1200, 2200]) {
+    const result = await getBestMove(fen, 20, { movetime, multiPV: 1 });
+    if (result.bestMove && result.bestMove !== '(none)') return result;
+  }
 
   return null;
+}
+
+/** @deprecated Use resolveCoachRecommendation */
+export async function getCoachAnalysis(fen: string): Promise<StockfishResult | null> {
+  return resolveCoachRecommendation(fen);
 }
 
 export function setSkillLevel(level: number) {
