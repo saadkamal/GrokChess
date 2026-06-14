@@ -39,6 +39,28 @@ interface CoachInsight {
   createdAtMove?: number;
 }
 
+const COACH_LOADING_TEXT = 'Analyzing this position for the best move…';
+
+function isRecommendationInsight(insight: CoachInsight): boolean {
+  return Boolean(insight.fullText) || insight.text.startsWith('I recommend');
+}
+
+function pruneCoachInsightsForTakeback(prev: CoachInsight[], targetMove: number): CoachInsight[] {
+  return prev
+    .filter((insight) => {
+      if (insight.id === 0) return true;
+      if (isRecommendationInsight(insight)) return false;
+      if (typeof insight.createdAtMove === 'number') return insight.createdAtMove <= targetMove;
+      return true;
+    })
+    .map((insight) => ({
+      ...insight,
+      streaming: false,
+      fullText: undefined,
+      highlightedSquares: undefined,
+    }));
+}
+
 const DIFFICULTY_CONFIG = {
   easy: { depth: 1, label: 'Beginner', description: 'Forgiving, great for learning fundamentals', color: '#4ade80' },
   medium: { depth: 2, label: 'Club Player', description: 'Solid play with occasional tactics', color: '#fbbf24' },
@@ -421,6 +443,66 @@ function App() {
     });
   }, []);
 
+  const applyCoachRecommendation = useCallback(async (
+    fen: string,
+    generation: number,
+    createdAtMove: number,
+    loadingId?: number,
+  ) => {
+    const isActive = () => gameGenerationRef.current === generation;
+
+    if (!isActive()) return;
+
+    const analysis = await getCoachAnalysis(fen);
+    if (!isActive()) return;
+
+    if (!analysis?.bestMove || analysis.bestMove === '(none)') {
+      if (loadingId != null) {
+        setCoachInsights((prev) => prev.map((i) => (
+          i.id === loadingId
+            ? { ...i, text: 'Could not analyze this position — try again in a moment.', streaming: false }
+            : i
+        )));
+      }
+      return;
+    }
+
+    const parsed = parseUciMove(analysis.bestMove);
+    if (!parsed || !isActive()) return;
+
+    const position = new Chess(fen);
+    if (position.isGameOver()) {
+      if (loadingId != null) {
+        setCoachInsights((prev) => prev.filter((i) => i.id !== loadingId));
+      }
+      return;
+    }
+
+    const text = buildCoachRecommendationText(
+      position,
+      { from: parsed.from, to: parsed.to, promotion: parsed.promotion },
+      { eval: analysis.eval, multiPV: analysis.multiPV },
+    );
+
+    if (!isActive()) return;
+
+    setRecommendationHighlights([parsed.from, parsed.to]);
+    setLastMoveSquares(null);
+
+    setCoachInsights((prev) => {
+      const base = loadingId != null ? prev.filter((i) => i.id !== loadingId) : prev;
+      return [...base, {
+        id: Date.now() + 1,
+        text: '',
+        fullText: text,
+        streaming: true,
+        isPlayerMove: true,
+        timestamp: new Date(),
+        createdAtMove,
+      }];
+    });
+  }, []);
+
   const resetGame = useCallback((newDifficulty?: Difficulty) => {
     const d = newDifficulty || difficulty;
     gameGenerationRef.current += 1;
@@ -529,40 +611,10 @@ function App() {
 
         const recommendationGeneration = gameGenerationRef.current;
         const fenForRecommendation = chess.fen();
-        pendingRecommendationTimeoutRef.current = setTimeout(async () => {
+        pendingRecommendationTimeoutRef.current = setTimeout(() => {
             pendingRecommendationTimeoutRef.current = null;
             if (recommendationGeneration !== gameGenerationRef.current) return;
-
-            const analysis = await getCoachAnalysis(fenForRecommendation);
-
-            if (recommendationGeneration !== gameGenerationRef.current) return;
-            if (chess.fen() !== fenForRecommendation) return;
-
-            if (analysis?.bestMove && !chess.isGameOver()) {
-              const parsed = parseUciMove(analysis.bestMove);
-              if (!parsed) return;
-
-              const { from: fromSq, to: toSq } = parsed;
-              const text = buildCoachRecommendationText(
-                chess,
-                { from: fromSq, to: toSq, promotion: parsed.promotion },
-                { eval: analysis.eval, multiPV: analysis.multiPV },
-              );
-
-              setRecommendationHighlights([fromSq, toSq]);
-              setLastMoveSquares(null);
-
-              const suggestionInsight: CoachInsight = {
-                id: Date.now() + 1,
-                text: '',
-                fullText: text,
-                streaming: true,
-                isPlayerMove: true,
-                timestamp: new Date(),
-                createdAtMove: updatedHistory.length,
-              };
-              setCoachInsights(prev => [...prev, suggestionInsight]);
-            }
+            void applyCoachRecommendation(fenForRecommendation, recommendationGeneration, updatedHistory.length);
           }, 420);
 
         if (generation === gameGenerationRef.current && chess.isGameOver()) {
@@ -577,7 +629,7 @@ function App() {
     }, difficulty === 'hard' ? 650 : 420);
 
     return true;
-  }, [chess, difficulty, moveHistory, isGameOver, isThinking, clearPendingTimers]);
+  }, [chess, difficulty, moveHistory, isGameOver, isThinking, clearPendingTimers, applyCoachRecommendation]);
 
   const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square): boolean => {
     if (chess.turn() !== 'w') { toast.error("It's not your turn"); return false; }
@@ -611,67 +663,34 @@ function App() {
     setLastMoveSquares(restoredLast || null);
     setGameStatus('playing');
 
-    // Prune coach history back to the position we landed on after the take-back.
-    // Keep previous conversation instead of nuking the entire chat.
-    // Then the code below will append a fresh recommendation for the new position.
-    setCoachInsights(prev => {
-      const targetMove = newHistory.length;
+    const loadingId = Date.now();
+    setCoachInsights((prev) => [
+      ...pruneCoachInsightsForTakeback(prev, newHistory.length),
+      ...(chess.turn() === 'w'
+        ? [{
+            id: loadingId,
+            text: COACH_LOADING_TEXT,
+            isPlayerMove: true,
+            timestamp: new Date(),
+            createdAtMove: newHistory.length,
+          }]
+        : []),
+    ]);
 
-      return prev
-        .filter(insight => {
-          if (insight.id === 0) return true; // always keep the initial welcome
-          if (typeof insight.createdAtMove === 'number') {
-            return insight.createdAtMove <= targetMove;
-          }
-          // Old messages without createdAtMove (very early game) — keep them
-          return true;
-        })
-        .map(insight => ({
-          ...insight,
-          streaming: false,
-          fullText: undefined,
-          highlightedSquares: undefined,
-        }));
-    });
-
-    if (chess.turn() === 'w' && !isThinking) {
+    if (chess.turn() === 'w') {
       setRecommendationHighlights(null);
       const generation = gameGenerationRef.current;
-      const fenAtTakeback = chess.fen();
-      pendingTakebackTimeoutRef.current = setTimeout(async () => {
+      const fenAtTakeback = newFen;
+      pendingTakebackTimeoutRef.current = setTimeout(() => {
         pendingTakebackTimeoutRef.current = null;
-        if (generation !== gameGenerationRef.current) return;
-        if (chess.fen() !== fenAtTakeback) return;
-
-        const analysis = await getCoachAnalysis(fenAtTakeback);
-        if (generation !== gameGenerationRef.current) return;
-        if (chess.fen() !== fenAtTakeback) return;
-
-        if (analysis?.bestMove && !chess.isGameOver()) {
-          const parsed = parseUciMove(analysis.bestMove);
-          if (!parsed) return;
-
-          const fromSq = parsed.from;
-          const toSq = parsed.to;
-          const txt = buildCoachRecommendationText(
-            chess,
-            { from: fromSq, to: toSq, promotion: parsed.promotion },
-            { eval: analysis.eval, multiPV: analysis.multiPV },
-          );
-
-          setRecommendationHighlights([fromSq, toSq]);
-          setLastMoveSquares(null);   // same logic: when coach recommendation appears after takeback, clear any old last-move red
-
-          const suggestion = {
-            id: Date.now() + 1, text: '', fullText: txt, streaming: true, isPlayerMove: true,
-            timestamp: new Date(), createdAtMove: newHistory.length,
-          };
-          setCoachInsights(prev => [...prev, suggestion]);
-        }
-      }, 200);
+        void applyCoachRecommendation(fenAtTakeback, generation, newHistory.length, loadingId);
+      }, 0);
+    } else {
+      setRecommendationHighlights(null);
     }
+
     toast.success(`Took back ${movesToUndo} move${movesToUndo > 1 ? 's' : ''}`);
-  }, [chess, moveHistory, isThinking, difficulty, clearPendingTimers]);
+  }, [chess, moveHistory, isThinking, clearPendingTimers, applyCoachRecommendation]);
 
   const changeDifficulty = useCallback((newDiff: Difficulty) => {
     if (newDiff === difficulty && moveHistory.length > 0) return;
@@ -891,16 +910,21 @@ function App() {
             {/* Scrollable insights area - limited height on mobile, latest on top */}
             <div className="flex-1 overflow-y-auto pr-1 text-[11.5px] sm:text-[13.5px] leading-relaxed space-y-2 min-h-0 max-h-[92px]">
               <AnimatePresence>
-                {coachInsights.slice().reverse().slice(0, 5).map((insight) => (
+                {coachInsights.slice().reverse().slice(0, 5).map((insight) => {
+                  const displayText = insight.text || insight.fullText || '';
+                  const [headline, ...whyParts] = displayText.split('\n\nWhy:');
+                  const whyText = whyParts.join('\n\nWhy:');
+                  return (
                   <motion.div key={insight.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="text-[#c8c8d0]">
-                    {insight.text.split('\n\nWhy:')[0]}
-                    {insight.text.includes('\n\nWhy:') && (
+                    {headline}
+                    {whyText && (
                       <div className="mt-1 sm:mt-2 pl-2.5 border-l border-[#00e5ff]/40 text-[10px] sm:text-[12px] text-[#a0a0aa]">
-                        {insight.text.split('\n\nWhy:')[1]?.split('\n\n')[0]}
+                        {whyText.split('\n\n')[0]}
                       </div>
                     )}
                   </motion.div>
-                ))}
+                  );
+                })}
               </AnimatePresence>
             </div>
 
