@@ -15,8 +15,9 @@ import { Chessboard } from 'react-chessboard';
 import { RotateCcw, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { initStockfish, getBestMove as stockfishGetBestMove, getFastAnalysis } from './lib/stockfishService';
+import { initStockfish, getBestMove as stockfishGetBestMove, getCoachAnalysis } from './lib/stockfishService';
 import { getBestMove as getCustomBestMove, pieceCodeToPromotion } from './lib/chessLogic';
+import { buildCoachRecommendationText } from './lib/coachText';
 
 import './App.css';
 
@@ -36,13 +37,6 @@ interface CoachInsight {
   streaming?: boolean;
   fullText?: string;
   createdAtMove?: number;
-}
-
-interface FastAnalysisResult {
-  bestMove: string;
-  eval?: number;
-  pv?: string;
-  multiPV?: Array<{ move: string; eval: number; pv: string }>;
 }
 
 const DIFFICULTY_CONFIG = {
@@ -266,55 +260,6 @@ async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<En
 function getPieceFullName(piece: string): string {
   const map: Record<string, string> = { p: 'pawn', n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
   return map[piece] || 'piece';
-}
-
-function describeMoveInPlainEnglish(move: { piece?: string; to: Square; san?: string }): string {
-  let pieceType = move.piece;
-  if (!pieceType && move.san) {
-    const first = move.san[0];
-    if (first >= 'A' && first <= 'Z') pieceType = first.toLowerCase();
-  }
-  if (!pieceType) pieceType = 'p';
-  const toSquare = move.to.toUpperCase();
-  const file = move.to[0];
-  const rank = move.to[1];
-  const fileNames: Record<string, string> = {
-    a: "the leftmost file (a-file)", b: "the second file from the left (b-file)", c: "the third file from the left (c-file)",
-    d: "the fourth file from the left (d-file, near the center)", e: "the fifth file from the left (e-file, near the center)",
-    f: "the sixth file from the left (f-file)", g: "the seventh file from the left (g-file)", h: "the rightmost file (h-file)",
-  };
-  const rankDesc = parseInt(rank) <= 4 ? `rank ${rank} (closer to you as White)` : `rank ${rank}`;
-  const squareDesc = `${fileNames[file] || file + '-file'}, ${rankDesc}`;
-  if (pieceType === 'n') return `Move your knight to ${toSquare} — the square on ${squareDesc}.`;
-  if (pieceType === 'b') return `Move your bishop to ${toSquare} — the square on ${squareDesc}.`;
-  if (pieceType === 'r') return `Move your rook to ${toSquare} — the square on ${squareDesc}.`;
-  if (pieceType === 'q') return `Move your queen to ${toSquare} — the square on ${squareDesc}.`;
-  if (pieceType === 'k') return `Move your king to ${toSquare} — the square on ${squareDesc}.`;
-  return `Push a pawn to ${toSquare} — the square on ${squareDesc}.`;
-}
-
-function getBetterMoveWhy(chess: Chess, rec: { from: Square; to: Square; san: string; promotion?: PromotionPiece }): string {
-  const before = new Chess(chess.fen());
-  const piece = before.get(rec.from);
-  if (!piece) return "This improves your position.";
-  const isWhite = piece.color === 'w';
-  const opponentColor = isWhite ? 'b' : 'w';
-  const reasons: string[] = [];
-  const targetOnArrival = chess.get(rec.to);
-  if (targetOnArrival) reasons.push(`captures the ${getPieceFullName(targetOnArrival.type)} on ${rec.to}`);
-  before.move({ from: rec.from, to: rec.to, promotion: rec.promotion });
-  if (['n', 'b', 'r', 'q'].includes(piece.type)) {
-    const startingRank = isWhite ? '1' : '8';
-    if (rec.from[1] === startingRank) reasons.push("develops a piece that was still on the back rank");
-  }
-  const central: Square[] = ['d4', 'd5', 'e4', 'e5'];
-  const attacksCenter = central.filter(sq => before.isAttacked(sq, opponentColor)).length;
-  if (attacksCenter >= 2) reasons.push("strongly controls the center");
-  else if (attacksCenter === 1) reasons.push("helps control important central squares");
-  if (rec.san.includes('+')) reasons.push("gives check and forces the opponent to respond");
-  if (piece.type === 'k' && Math.abs(rec.from.charCodeAt(0) - rec.to.charCodeAt(0)) === 2) reasons.push("improves king safety by castling");
-  if (reasons.length === 0) reasons.push("improves your piece activity and fights for the center");
-  return "This " + reasons.join(" and ") + ".";
 }
 
 function getSquareDescription(square: Square): string {
@@ -566,40 +511,21 @@ function App() {
             pendingRecommendationTimeoutRef.current = null;
             if (recommendationGeneration !== gameGenerationRef.current) return;
 
-            const fastAnalysisPromise = getFastAnalysis(fenForRecommendation);
-            const timeoutPromise = new Promise<FastAnalysisResult | null>((resolve) => setTimeout(() => resolve(null), 1800));
-            let analysis: FastAnalysisResult | null = await Promise.race([fastAnalysisPromise, timeoutPromise]);
+            const analysis = await getCoachAnalysis(fenForRecommendation);
 
             if (recommendationGeneration !== gameGenerationRef.current) return;
             if (chess.fen() !== fenForRecommendation) return;
-
-            if (!analysis?.bestMove) {
-              const fallback = await getBestMoveSmart(fenForRecommendation, difficulty);
-              if (recommendationGeneration !== gameGenerationRef.current) return;
-              if (chess.fen() !== fenForRecommendation) return;
-              if (fallback?.from && fallback?.to) {
-                analysis = {
-                  bestMove: fallback.from + fallback.to + (fallback.promotion ?? ''),
-                  multiPV: [],
-                };
-              }
-            }
 
             if (analysis?.bestMove && !chess.isGameOver()) {
               const parsed = parseUciMove(analysis.bestMove);
               if (!parsed) return;
 
               const { from: fromSq, to: toSq } = parsed;
-              const actualPiece = chess.get(fromSq)?.type;
-              const targetPiece = chess.get(toSq);
-
-              const rec = { from: fromSq, to: toSq, san: analysis.bestMove, piece: actualPiece, promotion: parsed.promotion };
-              const plainEnglish = targetPiece
-                ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
-                : describeMoveInPlainEnglish(rec);
-
-              const why = getBetterMoveWhy(chess, rec);
-              const text = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
+              const text = buildCoachRecommendationText(
+                chess,
+                { from: fromSq, to: toSq, promotion: parsed.promotion },
+                { eval: analysis.eval, multiPV: analysis.multiPV },
+              );
 
               setRecommendationHighlights([fromSq, toSq]);
               setLastMoveSquares(null);
@@ -695,21 +621,21 @@ function App() {
         if (generation !== gameGenerationRef.current) return;
         if (chess.fen() !== fenAtTakeback) return;
 
-        const recommendation = await getBestMoveSmart(fenAtTakeback, difficulty);
+        const analysis = await getCoachAnalysis(fenAtTakeback);
         if (generation !== gameGenerationRef.current) return;
         if (chess.fen() !== fenAtTakeback) return;
 
-        if (recommendation?.from && recommendation?.to && !chess.isGameOver()) {
-          const fromSq = recommendation.from;
-          const toSq = recommendation.to;
-          const actualPiece = chess.get(fromSq)?.type;
-          const targetPiece = chess.get(toSq);
-          const rec = { from: fromSq, to: toSq, san: recommendation.san || (fromSq + toSq), piece: actualPiece };
-          const plainEnglish = targetPiece 
-            ? `Capture the ${getPieceFullName(targetPiece.type)} on ${toSq.toUpperCase()} with your ${getPieceFullName(actualPiece || 'p')}`
-            : describeMoveInPlainEnglish(rec);
-          const why = getBetterMoveWhy(chess, rec);
-          const txt = `I recommend ${plainEnglish}\n\nWHY THIS IS GOOD:\n${why}`;
+        if (analysis?.bestMove && !chess.isGameOver()) {
+          const parsed = parseUciMove(analysis.bestMove);
+          if (!parsed) return;
+
+          const fromSq = parsed.from;
+          const toSq = parsed.to;
+          const txt = buildCoachRecommendationText(
+            chess,
+            { from: fromSq, to: toSq, promotion: parsed.promotion },
+            { eval: analysis.eval, multiPV: analysis.multiPV },
+          );
 
           setRecommendationHighlights([fromSq, toSq]);
           setLastMoveSquares(null);   // same logic: when coach recommendation appears after takeback, clear any old last-move red
@@ -945,10 +871,10 @@ function App() {
               <AnimatePresence>
                 {coachInsights.slice().reverse().slice(0, 5).map((insight) => (
                   <motion.div key={insight.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="text-[#c8c8d0]">
-                    {insight.text.split('\n\nWHY THIS IS GOOD:')[0]}
-                    {insight.text.includes('WHY THIS IS GOOD') && (
+                    {insight.text.split('\n\nWhy:')[0]}
+                    {insight.text.includes('\n\nWhy:') && (
                       <div className="mt-1 sm:mt-2 pl-2.5 border-l border-[#00e5ff]/40 text-[10px] sm:text-[12px] text-[#a0a0aa]">
-                        {insight.text.split('\n\nWHY THIS IS GOOD:')[1]?.split('\n\n')[0]}
+                        {insight.text.split('\n\nWhy:')[1]?.split('\n\n')[0]}
                       </div>
                     )}
                   </motion.div>

@@ -150,6 +150,17 @@ export async function getFastAnalysis(fen: string) {
   return getBestMove(fen, 20, { movetime: 1100, multiPV: 3 });
 }
 
+/** Coach recommendations always use full-strength Stockfish — never the weak custom fallback. */
+export async function getCoachAnalysis(fen: string): Promise<StockfishResult | null> {
+  const primary = await getBestMove(fen, 20, { movetime: 1500, multiPV: 3 });
+  if (primary.bestMove && primary.bestMove !== '(none)') return primary;
+
+  const retry = await getBestMove(fen, 20, { movetime: 2800, multiPV: 3 });
+  if (retry.bestMove && retry.bestMove !== '(none)') return retry;
+
+  return null;
+}
+
 export function setSkillLevel(level: number) {
   sendCommand(`setoption name Skill Level value ${Math.max(0, Math.min(20, level))}`);
 }
