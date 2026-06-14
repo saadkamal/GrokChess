@@ -194,6 +194,14 @@ function applyChessMove(
   }
 }
 
+/** Rebuild chess.js state from our move log — keeps undo/history in sync for take-back. */
+function replayMoveHistory(chess: Chess, moves: Move[]): void {
+  chess.reset();
+  for (const m of moves) {
+    chess.move({ from: m.from, to: m.to, promotion: m.promotion as PromotionPiece | undefined });
+  }
+}
+
 function pickRandomLegalMove(fen: string): Move | null {
   const trial = new Chess(fen);
   const legal = trial.moves({ verbose: true }) as Move[];
@@ -486,7 +494,21 @@ function App() {
         }
 
         const aiMove = resolved.move;
-        chess.load(resolved.fen);
+        const applied = applyChessMove(chess, {
+          from: aiMove.from,
+          to: aiMove.to,
+          promotion: aiMove.promotion as PromotionPiece | undefined,
+        });
+        if (!applied) {
+          replayMoveHistory(chess, newHistory);
+          toast.error('AI could not respond — your move was undone.');
+          setFen(chess.fen());
+          setMoveHistory(newHistory.slice(0, -1));
+          setLastMoveSquares(newHistory.length > 1
+            ? { from: newHistory[newHistory.length - 2].from, to: newHistory[newHistory.length - 2].to }
+            : null);
+          return;
+        }
 
         setLastMoveSquares(null);
         setRecommendationHighlights(null);
@@ -579,8 +601,8 @@ function App() {
     clearPendingTimers();
 
     const movesToUndo = Math.min(2, moveHistory.length);
-    for (let i = 0; i < movesToUndo; i++) chess.undo();
     const newHistory = moveHistory.slice(0, -movesToUndo);
+    replayMoveHistory(chess, newHistory);
     const newFen = chess.fen();
     setFen(newFen);
     setBoardRenderKey((k) => k + 1);
