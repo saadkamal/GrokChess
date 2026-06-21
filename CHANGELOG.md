@@ -2,6 +2,18 @@
 
 All notable changes to GrokChess will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- Self-host Stockfish 16 WASM assets instead of loading the engine from a CDN.
+- Harden Stockfish worker initialization, readiness checks, score parsing, and request timeouts.
+- Normalize engine evaluations as White-relative values and preserve mate scores for coach analysis.
+- Reuse the tested beginner chess logic from `src/lib/chessLogic.ts` in the app.
+- Serve hashed production assets with long-lived cache headers while keeping `index.html` revalidated after deploys.
+
+### Removed
+- Removed unused starter/demo assets.
+
 ## [1.0.0] - 2026-02
 
 ### Links
