@@ -395,12 +395,13 @@ function App() {
       acc[item.quality] += 1;
       return acc;
     }, { best: 0, brilliant: 0, great: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 });
+    const hasTurningPoint = worst.centipawnLoss > 80;
     const learningTips = [
       counts.blunder || counts.mistake ? 'Slow down before captures and checks — most big swings come from loose pieces.' : 'Your tactical control was solid. Keep asking what your opponent threatens next.',
       counts.inaccuracy ? 'Look for candidate moves before committing; one quiet improving move is often better than the first legal idea.' : 'You avoided many small inaccuracies, which is a strong sign of improving consistency.',
       worst?.bestMoveSan ? `Revisit move ${worst.moveNumber}: the coach preferred ${worst.bestMoveSan}.` : 'Keep using the coach recommendation as a training target after each reply.',
     ];
-    return { accuracy, worst, counts, learningTips };
+    return { accuracy, worst, counts, learningTips, hasTurningPoint };
   }, [moveReviews]);
 
   useEffect(() => {
@@ -560,11 +561,13 @@ function App() {
 
         const resolved = resolveAiMove(fenBeforeAi, aiResult);
         if (!resolved) {
+          const rolledBackHistory = newHistory.slice(0, -1);
           chess.undo();
           setFen(chess.fen());
-          setMoveHistory(newHistory.slice(0, -1));
-          setLastMoveSquares(newHistory.length > 1
-            ? { from: newHistory[newHistory.length - 2].from, to: newHistory[newHistory.length - 2].to }
+          setMoveHistory(rolledBackHistory);
+          setMoveReviews((prev) => prev.filter((review) => review.moveNumber * 2 - 1 <= rolledBackHistory.length));
+          setLastMoveSquares(rolledBackHistory.length > 0
+            ? { from: rolledBackHistory[rolledBackHistory.length - 1].from, to: rolledBackHistory[rolledBackHistory.length - 1].to }
             : null);
           toast.error('AI could not respond — your move was undone.');
           return;
@@ -581,12 +584,14 @@ function App() {
           promotion: aiMove.promotion as PromotionPiece | undefined,
         });
         if (!applied) {
-          replayMoveHistory(chess, newHistory);
+          const rolledBackHistory = newHistory.slice(0, -1);
+          replayMoveHistory(chess, rolledBackHistory);
           toast.error('AI could not respond — your move was undone.');
           setFen(chess.fen());
-          setMoveHistory(newHistory.slice(0, -1));
-          setLastMoveSquares(newHistory.length > 1
-            ? { from: newHistory[newHistory.length - 2].from, to: newHistory[newHistory.length - 2].to }
+          setMoveHistory(rolledBackHistory);
+          setMoveReviews((prev) => prev.filter((review) => review.moveNumber * 2 - 1 <= rolledBackHistory.length));
+          setLastMoveSquares(rolledBackHistory.length > 0
+            ? { from: rolledBackHistory[rolledBackHistory.length - 1].from, to: rolledBackHistory[rolledBackHistory.length - 1].to }
             : null);
           return;
         }
@@ -774,8 +779,8 @@ function App() {
           <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-40 transition">
             <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">TAKE BACK</span>
           </button>
-          <button onClick={() => setIsReviewOpen(true)} disabled={moveReviews.length === 0} className="hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#00e5ff]/10 hover:bg-[#00e5ff]/15 border border-[#00e5ff]/20 disabled:opacity-40 transition text-[#00e5ff]">
-            REVIEW
+          <button onClick={() => setIsReviewOpen(true)} disabled={moveReviews.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#00e5ff]/10 hover:bg-[#00e5ff]/15 border border-[#00e5ff]/20 disabled:opacity-40 transition text-[#00e5ff]">
+            <span className="sm:hidden">REV</span><span className="hidden sm:inline">REVIEW</span>
           </button>
           <button onClick={() => resetGame()} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#ff4d6d]">
             <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">NEW</span>
@@ -994,8 +999,10 @@ function App() {
               </div>
 
               {reviewSummary.worst && (
-                <div className="mt-4 rounded-2xl border border-[#ff453a]/20 bg-[#ff453a]/[0.045] p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-[1.7px] text-[#ff7b72]">Turning point</div>
+                <div className={`mt-4 rounded-2xl border p-4 ${reviewSummary.hasTurningPoint ? 'border-[#ff453a]/20 bg-[#ff453a]/[0.045]' : 'border-[#00e5ff]/15 bg-[#00e5ff]/[0.04]'}`}>
+                  <div className={`text-[10px] font-semibold uppercase tracking-[1.7px] ${reviewSummary.hasTurningPoint ? 'text-[#ff7b72]' : 'text-[#00e5ff]/70'}`}>
+                    {reviewSummary.hasTurningPoint ? 'Turning point' : 'Clean game'}
+                  </div>
                   <div className="mt-1 text-sm text-white/80">Move {reviewSummary.worst.moveNumber}: {reviewSummary.worst.san} — {reviewSummary.worst.summary}</div>
                 </div>
               )}
