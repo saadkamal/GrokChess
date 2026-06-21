@@ -29,6 +29,20 @@ describe('coachText', () => {
     expect(why).toContain('0.6');
   });
 
+  it('describes mate scores without showing synthetic evals', () => {
+    const chess = new Chess();
+    const why = explainRecommendation(chess, { from: 'e2', to: 'e4' }, { eval: 999.9, mate: 2 });
+    expect(why).toContain('forced mate');
+    expect(why).toContain('2 moves');
+    expect(why).not.toContain('999.9');
+  });
+
+  it('uses the actual opponent color in contested-square text', () => {
+    const chess = new Chess('4k3/8/8/8/4pn2/8/2P5/4K3 b - - 0 1');
+    const why = explainRecommendation(chess, { from: 'f4', to: 'd3' });
+    expect(why).toContain('White can still capture');
+  });
+
   it('builds a full recommendation block', () => {
     const chess = new Chess();
     const text = buildCoachRecommendationText(chess, { from: 'e2', to: 'e4' }, { eval: 0.3 });

@@ -122,10 +122,11 @@ npm run test:coverage
 src/
 ├── App.tsx                 # Main game logic + UI
 ├── lib/
-│   ├── stockfishService.ts # Stockfish WASM integration
-│   └── stockfish.worker.ts # Web Worker for engine
+│   └── stockfishService.ts # Stockfish WASM integration
 ├── main.tsx
 └── index.css               # Design system + holographic styles
+public/
+└── stockfish/              # Self-hosted Stockfish 16 JS/WASM assets
 ```
 
 ## How the AI Works
@@ -143,6 +144,8 @@ The production server (`server.js`) is only used for static file serving + the n
 MIT © Saad Kamal
 
 This project was built in collaboration with xAI's Grok 4.3.
+
+Stockfish 16 is included as a third-party engine under the GNU GPL v3; see `public/stockfish/license.txt`.
 
 ## Credits & Attribution
 

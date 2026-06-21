@@ -104,7 +104,10 @@ export function minimax(chess: Chess, depth: number, alpha: number, beta: number
   }
 }
 
-export function getBestMove(fen: string, depth: number): { san: string; from: Square; to: Square; eval: number } | null {
+export function getBestMove(
+  fen: string,
+  depth: number,
+): { san: string; from: Square; to: Square; promotion?: PromotionPiece; eval: number } | null {
   const chess = new Chess(fen);
   if (chess.isGameOver()) return null;
   const allMoves = chess.moves({ verbose: true }) as Move[];
@@ -122,5 +125,11 @@ export function getBestMove(fen: string, depth: number): { san: string; from: Sq
     }
   }
   if (!bestMove) return null;
-  return { san: bestMove.san, from: bestMove.from, to: bestMove.to, eval: bestValue };
+  return {
+    san: bestMove.san,
+    from: bestMove.from,
+    to: bestMove.to,
+    promotion: bestMove.promotion as PromotionPiece | undefined,
+    eval: bestValue,
+  };
 }

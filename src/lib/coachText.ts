@@ -15,8 +15,11 @@ export type CoachRecommendation = {
 };
 
 export type CoachAnalysisContext = {
+  /** White-relative engine evaluation in pawns. Positive means White is better. */
   eval?: number;
-  multiPV?: Array<{ move: string; eval: number; pv: string }>;
+  /** White-relative mate distance. Positive means White mates; negative means Black mates. */
+  mate?: number;
+  multiPV?: Array<{ move: string; eval: number; pv: string; mate?: number }>;
 };
 
 const PIECE_NAMES: Record<string, string> = {
@@ -66,7 +69,13 @@ export function describeRecommendationMove(chess: Chess, rec: CoachRecommendatio
   return `move your ${name} from ${from} to ${to}`;
 }
 
-function formatEval(evalScore?: number): string | null {
+function formatEval(evalScore?: number, mate?: number): string | null {
+  if (mate !== undefined && !Number.isNaN(mate)) {
+    const moves = Math.abs(mate);
+    return mate > 0
+      ? `The engine sees a forced mate for you in ${moves} move${moves === 1 ? '' : 's'} if you stay accurate.`
+      : `The engine sees a forced mate threat against you in ${moves} move${moves === 1 ? '' : 's'}, so this is urgent.`;
+  }
   if (evalScore === undefined || Number.isNaN(evalScore)) return null;
   const rounded = Math.round(evalScore * 10) / 10;
   const sign = rounded > 0 ? '+' : '';
@@ -97,11 +106,12 @@ function describeSquareSafety(
   const piece = afterMove.get(square);
   const label = piece ? pieceName(piece.type) : 'piece';
   const sq = square.toUpperCase();
+  const opponentLabel = opponent === 'b' ? 'Black' : 'White';
 
   if (!defended) {
     return `Careful: your ${label} on ${sq} would be attacked with no backup — that's often a free piece unless you're setting up a tactic.`;
   }
-  return `Note: ${sq} is contested — your ${label} is defended, but Black can still capture there and trade material.`;
+  return `Note: ${sq} is contested — your ${label} is defended, but ${opponentLabel} can still capture there and trade material.`;
 }
 
 export function explainRecommendation(
@@ -144,7 +154,7 @@ export function explainRecommendation(
     parts.push('You increase your influence in the center.');
   }
 
-  const evalLine = formatEval(analysis?.eval);
+  const evalLine = formatEval(analysis?.eval, analysis?.mate);
   if (evalLine) parts.push(evalLine);
 
   if (parts.length === 0) {
