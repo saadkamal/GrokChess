@@ -18,13 +18,13 @@ import { toast } from 'sonner';
 import { initStockfish, getBestMove as stockfishGetBestMove, resolveCoachRecommendation } from './lib/stockfishService';
 import { evaluatePosition, getBestMove as getCustomBestMove, pieceCodeToPromotion } from './lib/chessLogic';
 import { buildCoachRecommendationText } from './lib/coachText';
+import { analyzePlayerMoveQuality, qualityLabel } from './lib/moveQuality';
+import type { MoveQuality } from './lib/moveQuality';
 
 import './App.css';
 
 // Types
 type Difficulty = 'easy' | 'medium' | 'hard';
-
-type MoveQuality = 'brilliant' | 'great' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 
 interface CoachInsight {
   id: number;
@@ -40,6 +40,19 @@ interface CoachInsight {
 }
 
 const COACH_LOADING_TEXT = 'Analyzing this position for the best move…';
+
+function qualityBadgeClass(quality: MoveQuality): string {
+  const classes: Record<MoveQuality, string> = {
+    best: 'border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#00e5ff]',
+    brilliant: 'border-[#bf5af2]/40 bg-[#bf5af2]/10 text-[#d8a6ff]',
+    great: 'border-[#30d158]/40 bg-[#30d158]/10 text-[#62e67f]',
+    good: 'border-white/20 bg-white/10 text-white/75',
+    inaccuracy: 'border-[#f1a10d]/40 bg-[#f1a10d]/10 text-[#ffd166]',
+    mistake: 'border-[#f7630c]/40 bg-[#f7630c]/10 text-[#ff9f5a]',
+    blunder: 'border-[#ff453a]/40 bg-[#ff453a]/10 text-[#ff7b72]',
+  };
+  return classes[quality];
+}
 
 function isRecommendationInsight(insight: CoachInsight): boolean {
   return Boolean(insight.fullText) || insight.text.startsWith('I recommend');
@@ -449,6 +462,7 @@ function App() {
 
   const makeMove = useCallback((from: Square, to: Square, promotion?: 'q' | 'r' | 'b' | 'n'): boolean => {
     if (isGameOver || isThinking) return false;
+    const fenBeforePlayerMove = chess.fen();
     const move = chess.move({ from, to, promotion });
     if (!move) return false;
 
@@ -462,6 +476,18 @@ function App() {
     clearPendingTimers();
 
     const insight = generateCoachInsight(chess, move, true, difficulty);
+    const qualityAnalysis = analyzePlayerMoveQuality(fenBeforePlayerMove, {
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion as PromotionPiece | undefined,
+    }, difficulty === 'easy' ? 1 : 2);
+    if (qualityAnalysis) {
+      insight.quality = qualityAnalysis.quality;
+      insight.text = `${qualityAnalysis.summary}\n\n${insight.text}`;
+      insight.highlightedSquares = qualityAnalysis.bestMove && qualityAnalysis.quality !== 'best'
+        ? [qualityAnalysis.bestMove.from, qualityAnalysis.bestMove.to]
+        : insight.highlightedSquares;
+    }
     insight.createdAtMove = newHistory.length;
     setCoachInsights(prev => [...prev, insight]);
 
@@ -838,8 +864,23 @@ function App() {
                   const [headline, ...whyParts] = displayText.split('\n\nWhy:');
                   const whyText = whyParts.join('\n\nWhy:');
                   return (
-                  <motion.div key={insight.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="text-[#c8c8d0]">
-                    {headline}
+                  <motion.div
+                    key={insight.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 text-[#c8c8d0] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                  >
+                    <div className="mb-1 flex items-center gap-1.5">
+                      {insight.quality && (
+                        <span className={`rounded-full border px-2 py-0.5 text-[8px] sm:text-[9px] font-semibold uppercase tracking-[1.2px] ${qualityBadgeClass(insight.quality)}`}>
+                          {qualityLabel(insight.quality)}
+                        </span>
+                      )}
+                      {insight.moveSan && (
+                        <span className="font-mono text-[8px] sm:text-[9px] text-white/35">{insight.moveSan}</span>
+                      )}
+                    </div>
+                    <div>{headline}</div>
                     {whyText && (
                       <div className="mt-1 sm:mt-2 pl-2.5 border-l border-[#00e5ff]/40 text-[10px] sm:text-[12px] text-[#a0a0aa]">
                         {whyText.split('\n\n')[0]}
