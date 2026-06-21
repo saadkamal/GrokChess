@@ -28,12 +28,20 @@ app.get('/health', (req, res) => {
   res.status(200).send('ok');
 });
 
-// Serve static files from dist/
+// Serve static files from dist/. Hashed Vite assets are safe to cache long-term;
+// index.html / SPA fallback must revalidate so Railway deploys are picked up quickly.
 const serve = sirv(dist, {
   single: true,           // SPA fallback to index.html
   dev: false,
   etag: true,
-  maxAge: 31536000,       // 1 year cache for assets
+  maxAge: 0,
+  setHeaders(res, pathname) {
+    if (pathname.includes('/assets/')) {
+      res.setHeader('Cache-Control', 'public,max-age=31536000,immutable');
+    } else if (pathname.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  },
 });
 
 app.use(serve);

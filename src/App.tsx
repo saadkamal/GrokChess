@@ -16,7 +16,7 @@ import { RotateCcw, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { initStockfish, getBestMove as stockfishGetBestMove, resolveCoachRecommendation } from './lib/stockfishService';
-import { getBestMove as getCustomBestMove, pieceCodeToPromotion } from './lib/chessLogic';
+import { evaluatePosition, getBestMove as getCustomBestMove, pieceCodeToPromotion } from './lib/chessLogic';
 import { buildCoachRecommendationText } from './lib/coachText';
 
 import './App.css';
@@ -67,115 +67,26 @@ const DIFFICULTY_CONFIG = {
   hard: { depth: 3, label: 'Expert', description: 'Strong tactical and positional play', color: '#f87171' },
 };
 
-const PIECE_VALUES: Record<string, number> = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
-
-const PST: Record<string, number[]> = {
-  p: [0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],
-  n: [-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
-  b: [-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],
-  r: [0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5],
-  q: [-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,0,5,5,5,5,0,-10,-10,0,0,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20],
-  k: [-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20],
-};
-
-function getPSTValue(piece: string, square: Square, isWhite: boolean): number {
-  const table = PST[piece.toLowerCase()];
-  if (!table) return 0;
-  let idx = square.charCodeAt(1) - 49;
-  idx = 7 - idx;
-  let file = square.charCodeAt(0) - 97;
-  if (!isWhite) { idx = 7 - idx; file = 7 - file; }
-  return table[idx * 8 + file];
-}
-
-function evaluatePosition(chess: Chess): number {
-  const board = chess.board();
-  let score = 0;
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const piece = board[r][c];
-      if (!piece) continue;
-      const sq = (String.fromCharCode(97 + c) + (8 - r)) as Square;
-      const val = PIECE_VALUES[piece.type] + getPSTValue(piece.type, sq, piece.color === 'w');
-      score += piece.color === 'w' ? val : -val;
-    }
-  }
-  const center = ['d4', 'd5', 'e4', 'e5'] as Square[];
-  center.forEach(sq => {
-    const p = chess.get(sq);
-    if (p) score += p.color === 'w' ? 8 : -8;
-  });
-  return score;
-}
-
-function orderMoves(moves: Move[]): Move[] {
-  return [...moves].sort((a, b) => {
-    const aCapture = a.captured ? PIECE_VALUES[a.captured] : 0;
-    const bCapture = b.captured ? PIECE_VALUES[b.captured] : 0;
-    return bCapture - aCapture;
-  });
-}
-
-function minimax(chess: Chess, depth: number, alpha: number, beta: number, isMaximizing: boolean): number {
-  if (depth === 0 || chess.isGameOver()) {
-    if (chess.isCheckmate()) return isMaximizing ? -99999 : 99999;
-    if (chess.isDraw()) return 0;
-    return evaluatePosition(chess);
-  }
-  const moves = orderMoves(chess.moves({ verbose: true }) as Move[]);
-  if (isMaximizing) {
-    let maxEval = -Infinity;
-    for (const move of moves) {
-      chess.move(move);
-      const evalScore = minimax(chess, depth - 1, alpha, beta, false);
-      chess.undo();
-      maxEval = Math.max(maxEval, evalScore);
-      alpha = Math.max(alpha, evalScore);
-      if (beta <= alpha) break;
-    }
-    return maxEval;
-  } else {
-    let minEval = Infinity;
-    for (const move of moves) {
-      chess.move(move);
-      const evalScore = minimax(chess, depth - 1, alpha, beta, true);
-      chess.undo();
-      minEval = Math.min(minEval, evalScore);
-      beta = Math.min(beta, evalScore);
-      if (beta <= alpha) break;
-    }
-    return minEval;
-  }
-}
-
-function getBestMove(fen: string, difficulty: Difficulty): { san: string; from: Square; to: Square; eval: number } | null {
+function getBeginnerMove(fen: string): EngineMove | null {
   const chess = new Chess(fen);
   if (chess.isGameOver()) return null;
-  const config = DIFFICULTY_CONFIG[difficulty];
-  const depth = config.depth;
+
   const allMoves = chess.moves({ verbose: true }) as Move[];
-  if (difficulty === 'easy' && Math.random() < 0.35) {
+  if (Math.random() < 0.35) {
     const randomMove = allMoves[Math.floor(Math.random() * allMoves.length)];
     chess.move(randomMove);
     const evalScore = evaluatePosition(chess);
     chess.undo();
-    return { san: randomMove.san, from: randomMove.from, to: randomMove.to, eval: evalScore };
+    return {
+      san: randomMove.san,
+      from: randomMove.from,
+      to: randomMove.to,
+      promotion: randomMove.promotion as PromotionPiece | undefined,
+      eval: evalScore,
+    };
   }
-  let bestMove: Move | null = null;
-  let bestValue = chess.turn() === 'w' ? -Infinity : Infinity;
-  const ordered = orderMoves(allMoves);
-  for (const move of ordered) {
-    chess.move(move);
-    const value = minimax(chess, depth - 1, -Infinity, Infinity, chess.turn() === 'w');
-    chess.undo();
-    if (chess.turn() === 'w') {
-      if (value > bestValue) { bestValue = value; bestMove = move; }
-    } else {
-      if (value < bestValue) { bestValue = value; bestMove = move; }
-    }
-  }
-  if (!bestMove) return null;
-  return { san: bestMove.san, from: bestMove.from, to: bestMove.to, eval: bestValue };
+
+  return getCustomBestMove(fen, DIFFICULTY_CONFIG.easy.depth);
 }
 
 type PromotionPiece = 'q' | 'r' | 'b' | 'n';
@@ -254,19 +165,20 @@ function resolveAiMove(
 
 async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<EngineMove | null> {
   if (difficulty === 'easy') {
-    return getBestMove(fen, difficulty);
+    return getBeginnerMove(fen);
   }
   const skillMap = { medium: 13, hard: 20 };
   const timeMap = { medium: 950, hard: 2200 };
   const depthForHard = 18;
 
-  const stockfishCall = (async () => {
-    try {
-      const opts = difficulty === 'hard' ? { depth: depthForHard, multiPV: 3 } : { movetime: timeMap[difficulty], multiPV: 1 };
-      const result = await stockfishGetBestMove(fen, skillMap[difficulty], opts);
-      if (result?.bestMove) {
-        const parsed = parseUciMove(result.bestMove);
-        if (!parsed) return null;
+  try {
+    const opts = difficulty === 'hard'
+      ? { depth: depthForHard, multiPV: 3, timeoutMs: 4500 }
+      : { movetime: timeMap[difficulty], multiPV: 1, timeoutMs: 2500 };
+    const result = await stockfishGetBestMove(fen, skillMap[difficulty], opts);
+    if (result?.bestMove) {
+      const parsed = parseUciMove(result.bestMove);
+      if (parsed) {
         return {
           san: '',
           from: parsed.from,
@@ -276,13 +188,9 @@ async function getBestMoveSmart(fen: string, difficulty: Difficulty): Promise<En
           pv: result.pv,
         };
       }
-    } catch { console.warn('Stockfish call failed'); }
-    return null;
-  })();
+    }
+  } catch { console.warn('Stockfish call failed'); }
 
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), difficulty === 'hard' ? 4500 : 2500));
-  const result = await Promise.race([stockfishCall, timeout]);
-  if (result) return result;
   console.warn('Stockfish too slow or failed — using fallback');
   return getCustomBestMove(fen, DIFFICULTY_CONFIG[difficulty].depth);
 }
@@ -496,7 +404,7 @@ function App() {
     const text = buildCoachRecommendationText(
       position,
       { from: parsed.from, to: parsed.to, promotion: parsed.promotion },
-      { eval: analysis.eval, multiPV: analysis.multiPV },
+      { eval: analysis.eval, mate: analysis.mate, multiPV: analysis.multiPV },
     );
 
     if (!isActive()) return;

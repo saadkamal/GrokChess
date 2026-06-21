@@ -5,14 +5,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
 
-  // Stockfish WASM is bundled directly for client-side chess computation.
-  // This results in a larger bundle size (~500KB gzipped is expected).
+  // Stockfish WASM is served from public/stockfish for client-side chess computation.
+  // The app bundle itself remains smaller while the engine stays available offline/self-hosted.
   build: {
     chunkSizeWarningLimit: 600,
-  },
-
-  optimizeDeps: {
-    exclude: ['src/lib/stockfish.worker.ts'],
   },
 
   server: {
