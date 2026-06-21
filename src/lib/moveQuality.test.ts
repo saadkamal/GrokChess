@@ -26,4 +26,16 @@ describe('moveQuality', () => {
     expect(analysis?.quality).toBeDefined();
     expect(analysis?.summary.length).toBeGreaterThan(10);
   });
+
+  it('does not call a different move Best just because eval loss is tiny', () => {
+    const analysis = analyzePlayerMoveQuality(
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      { from: 'e2', to: 'e4' },
+      1,
+    );
+    if (analysis?.bestMove?.from !== 'e2' || analysis.bestMove.to !== 'e4') {
+      expect(analysis?.quality).not.toBe('best');
+      expect(analysis?.summary).not.toContain('matched');
+    }
+  });
 });

@@ -87,7 +87,8 @@ export function analyzePlayerMoveQuality(
   const sameMove = best.from === playedMove.from
     && best.to === playedMove.to
     && (best.promotion ?? undefined) === (playedMove.promotion ?? undefined);
-  const quality = sameMove ? 'best' : classifyCentipawnLoss(centipawnLoss);
+  const rawQuality = classifyCentipawnLoss(centipawnLoss);
+  const quality = sameMove ? 'best' : rawQuality === 'best' ? 'great' : rawQuality;
   const lossInPawns = Math.round((centipawnLoss / 100) * 10) / 10;
 
   let summary = qualityTone(quality);
