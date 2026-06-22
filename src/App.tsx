@@ -26,6 +26,15 @@ import './App.css';
 // Types
 type Difficulty = 'easy' | 'medium' | 'hard';
 
+interface MoveReviewEntry {
+  moveNumber: number;
+  san: string;
+  quality: MoveQuality;
+  centipawnLoss: number;
+  summary: string;
+  bestMoveSan?: string;
+}
+
 interface CoachInsight {
   id: number;
   text: string;
@@ -52,6 +61,19 @@ function qualityBadgeClass(quality: MoveQuality): string {
     blunder: 'border-[#ff453a]/40 bg-[#ff453a]/10 text-[#ff7b72]',
   };
   return classes[quality];
+}
+
+function qualityScore(quality: MoveQuality): number {
+  const scores: Record<MoveQuality, number> = {
+    best: 100,
+    brilliant: 100,
+    great: 92,
+    good: 82,
+    inaccuracy: 65,
+    mistake: 38,
+    blunder: 12,
+  };
+  return scores[quality];
 }
 
 function isRecommendationInsight(insight: CoachInsight): boolean {
@@ -319,6 +341,7 @@ function App() {
   const [fen, setFen] = useState(chess.fen());
   const [boardRenderKey, setBoardRenderKey] = useState(0);
   const [moveHistory, setMoveHistory] = useState<Move[]>([]);
+  const [moveReviews, setMoveReviews] = useState<MoveReviewEntry[]>([]);
 
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [isThinking, setIsThinking] = useState(false);
@@ -334,6 +357,7 @@ function App() {
   // so that Black's move animations also get crisp, non-ghosting last-move squares.
   const [lastMoveSquares, setLastMoveSquares] = useState<{ from: Square; to: Square } | null>(null);
   const [isCoachOpen, setIsCoachOpen] = useState(true); // Collapsible on mobile
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
 
   // Refs to cancel pending async work (prevents ghost moves, highlights, and coach text)
   const pendingAiMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -362,6 +386,23 @@ function App() {
   }, []);
 
   const isGameOver = gameStatus !== 'playing';
+
+  const reviewSummary = useMemo(() => {
+    if (moveReviews.length === 0) return null;
+    const accuracy = Math.round(moveReviews.reduce((sum, item) => sum + qualityScore(item.quality), 0) / moveReviews.length);
+    const worst = [...moveReviews].sort((a, b) => b.centipawnLoss - a.centipawnLoss)[0];
+    const counts = moveReviews.reduce<Record<MoveQuality, number>>((acc, item) => {
+      acc[item.quality] += 1;
+      return acc;
+    }, { best: 0, brilliant: 0, great: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 });
+    const hasTurningPoint = worst.centipawnLoss > 80;
+    const learningTips = [
+      counts.blunder || counts.mistake ? 'Slow down before captures and checks — most big swings come from loose pieces.' : 'Your tactical control was solid. Keep asking what your opponent threatens next.',
+      counts.inaccuracy ? 'Look for candidate moves before committing; one quiet improving move is often better than the first legal idea.' : 'You avoided many small inaccuracies, which is a strong sign of improving consistency.',
+      worst?.bestMoveSan ? `Revisit move ${worst.moveNumber}: the coach preferred ${worst.bestMoveSan}.` : 'Keep using the coach recommendation as a training target after each reply.',
+    ];
+    return { accuracy, worst, counts, learningTips, hasTurningPoint };
+  }, [moveReviews]);
 
   useEffect(() => {
     initStockfish().catch(() => {
@@ -447,6 +488,8 @@ function App() {
     setFen(chess.fen());
     setBoardRenderKey((k) => k + 1);
     setMoveHistory([]);
+    setMoveReviews([]);
+    setIsReviewOpen(false);
     setGameStatus('playing');
     setIsThinking(false);
     setRecommendationHighlights(null);
@@ -487,6 +530,14 @@ function App() {
       insight.highlightedSquares = qualityAnalysis.bestMove && qualityAnalysis.quality !== 'best'
         ? [qualityAnalysis.bestMove.from, qualityAnalysis.bestMove.to]
         : insight.highlightedSquares;
+      setMoveReviews((prev) => [...prev, {
+        moveNumber: Math.ceil(newHistory.length / 2),
+        san: move.san,
+        quality: qualityAnalysis.quality,
+        centipawnLoss: qualityAnalysis.centipawnLoss,
+        summary: qualityAnalysis.summary,
+        bestMoveSan: qualityAnalysis.bestMove?.san,
+      }]);
     }
     insight.createdAtMove = newHistory.length;
     setCoachInsights(prev => [...prev, insight]);
@@ -510,11 +561,13 @@ function App() {
 
         const resolved = resolveAiMove(fenBeforeAi, aiResult);
         if (!resolved) {
+          const rolledBackHistory = newHistory.slice(0, -1);
           chess.undo();
           setFen(chess.fen());
-          setMoveHistory(newHistory.slice(0, -1));
-          setLastMoveSquares(newHistory.length > 1
-            ? { from: newHistory[newHistory.length - 2].from, to: newHistory[newHistory.length - 2].to }
+          setMoveHistory(rolledBackHistory);
+          setMoveReviews((prev) => prev.filter((review) => review.moveNumber * 2 - 1 <= rolledBackHistory.length));
+          setLastMoveSquares(rolledBackHistory.length > 0
+            ? { from: rolledBackHistory[rolledBackHistory.length - 1].from, to: rolledBackHistory[rolledBackHistory.length - 1].to }
             : null);
           toast.error('AI could not respond — your move was undone.');
           return;
@@ -531,12 +584,14 @@ function App() {
           promotion: aiMove.promotion as PromotionPiece | undefined,
         });
         if (!applied) {
-          replayMoveHistory(chess, newHistory);
+          const rolledBackHistory = newHistory.slice(0, -1);
+          replayMoveHistory(chess, rolledBackHistory);
           toast.error('AI could not respond — your move was undone.');
           setFen(chess.fen());
-          setMoveHistory(newHistory.slice(0, -1));
-          setLastMoveSquares(newHistory.length > 1
-            ? { from: newHistory[newHistory.length - 2].from, to: newHistory[newHistory.length - 2].to }
+          setMoveHistory(rolledBackHistory);
+          setMoveReviews((prev) => prev.filter((review) => review.moveNumber * 2 - 1 <= rolledBackHistory.length));
+          setLastMoveSquares(rolledBackHistory.length > 0
+            ? { from: rolledBackHistory[rolledBackHistory.length - 1].from, to: rolledBackHistory[rolledBackHistory.length - 1].to }
             : null);
           return;
         }
@@ -608,6 +663,7 @@ function App() {
     setFen(newFen);
     setBoardRenderKey((k) => k + 1);
     setMoveHistory(newHistory);
+    setMoveReviews((prev) => prev.filter((review) => review.moveNumber * 2 - 1 <= newHistory.length));
     const restoredLast = newHistory.length > 0 ? { from: newHistory[newHistory.length-1].from, to: newHistory[newHistory.length-1].to } : undefined;
     setLastMoveSquares(restoredLast || null);
     setGameStatus('playing');
@@ -722,6 +778,9 @@ function App() {
         <div className="flex items-center gap-1.5 sm:gap-3 text-[10px] sm:text-xs pointer-events-auto">
           <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-40 transition">
             <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">TAKE BACK</span>
+          </button>
+          <button onClick={() => setIsReviewOpen(true)} disabled={moveReviews.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#00e5ff]/10 hover:bg-[#00e5ff]/15 border border-[#00e5ff]/20 disabled:opacity-40 transition text-[#00e5ff]">
+            <span className="sm:hidden">REV</span><span className="hidden sm:inline">REVIEW</span>
           </button>
           <button onClick={() => resetGame()} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#ff4d6d]">
             <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">NEW</span>
@@ -910,6 +969,57 @@ function App() {
         </div>
       )}
 
+      <AnimatePresence>
+        {isReviewOpen && reviewSummary && (
+          <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/90 backdrop-blur-2xl px-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 8 }}
+              className="w-full max-w-3xl rounded-3xl border border-[#00e5ff]/20 bg-[#05050a]/95 p-5 sm:p-7 shadow-[0_0_80px_rgba(0,229,255,0.12)]"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-medium tracking-[2px] text-[#00e5ff]/70">GAME REVIEW</div>
+                  <div className="mt-1 text-3xl font-semibold tracking-[-1px] text-white">Accuracy {reviewSummary.accuracy}%</div>
+                  <p className="mt-1 text-sm text-white/50">A plain-English review of your decisions as White.</p>
+                </div>
+                <button onClick={() => setIsReviewOpen(false)} className="rounded-full border border-white/10 px-4 py-2 text-xs text-white/60 hover:bg-white/10 hover:text-white">CLOSE</button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(['best', 'great', 'good', 'inaccuracy', 'mistake', 'blunder'] as MoveQuality[]).map((quality) => (
+                  reviewSummary.counts[quality] > 0 && (
+                    <div key={quality} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                      <div className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[1.2px] ${qualityBadgeClass(quality)}`}>{qualityLabel(quality)}</div>
+                      <div className="mt-2 text-2xl font-semibold text-white">{reviewSummary.counts[quality]}</div>
+                    </div>
+                  )
+                ))}
+              </div>
+
+              {reviewSummary.worst && (
+                <div className={`mt-4 rounded-2xl border p-4 ${reviewSummary.hasTurningPoint ? 'border-[#ff453a]/20 bg-[#ff453a]/[0.045]' : 'border-[#00e5ff]/15 bg-[#00e5ff]/[0.04]'}`}>
+                  <div className={`text-[10px] font-semibold uppercase tracking-[1.7px] ${reviewSummary.hasTurningPoint ? 'text-[#ff7b72]' : 'text-[#00e5ff]/70'}`}>
+                    {reviewSummary.hasTurningPoint ? 'Turning point' : 'Clean game'}
+                  </div>
+                  <div className="mt-1 text-sm text-white/80">Move {reviewSummary.worst.moveNumber}: {reviewSummary.worst.san} — {reviewSummary.worst.summary}</div>
+                </div>
+              )}
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {reviewSummary.learningTips.map((tip, index) => (
+                  <div key={tip} className="rounded-2xl border border-[#00e5ff]/15 bg-[#00e5ff]/[0.04] p-4 text-sm text-white/70">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-[1.5px] text-[#00e5ff]/70">Lesson {index + 1}</div>
+                    {tip}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Game status — centered on top of the board on mobile */}
       <div className="absolute z-50 text-white/50 tracking-[1.5px] font-mono text-[10px] text-center
         top-[70px] left-1/2 -translate-x-1/2 sm:text-xs sm:bottom-6 sm:top-auto sm:left-6 sm:-translate-x-0 sm:text-left">
@@ -930,9 +1040,14 @@ function App() {
                 {gameStatus === 'black-wins' && "The engine found the line."}
                 {gameStatus === 'draw' && "Solid defense."}
               </p>
-              <button onClick={() => resetGame()} className="px-10 py-3.5 rounded-full bg-white text-black font-medium text-sm tracking-wider">
-                PLAY AGAIN
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button onClick={() => setIsReviewOpen(true)} disabled={!reviewSummary} className="px-8 py-3.5 rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff] font-medium text-sm tracking-wider disabled:opacity-40">
+                  REVIEW GAME
+                </button>
+                <button onClick={() => resetGame()} className="px-10 py-3.5 rounded-full bg-white text-black font-medium text-sm tracking-wider">
+                  PLAY AGAIN
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
