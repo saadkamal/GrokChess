@@ -177,6 +177,25 @@ function pickRandomLegalMove(fen: string): Move | null {
   return legal[Math.floor(Math.random() * legal.length)];
 }
 
+function getResponsiveBoardWidth(): number {
+  if (typeof window === 'undefined') return 560;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  if (viewportWidth <= 900 && viewportHeight <= 520) {
+    return Math.max(200, Math.floor(Math.min(viewportWidth * 0.44 - 16, viewportHeight * 0.58 - 16, 300)));
+  }
+  if (viewportWidth <= 380) {
+    return Math.max(256, Math.floor(Math.min(viewportWidth * 0.92 - 16, viewportHeight * 0.52 - 16, 334)));
+  }
+  if (viewportWidth <= 900) {
+    return Math.max(280, Math.floor(Math.min(viewportWidth * 0.92 - 16, viewportHeight * 0.56 - 16, 414)));
+  }
+  if (viewportWidth <= 1099) {
+    return Math.max(420, Math.floor(Math.min(viewportHeight * 0.66 - 32, viewportWidth * 0.52 - 32, 560)));
+  }
+  return Math.max(480, Math.floor(Math.min(viewportHeight * 0.70 - 32, viewportWidth * 0.72 - 32, 668)));
+}
+
 function resolveAiMove(
   fen: string,
   engineMove: EngineMove | null,
@@ -342,6 +361,7 @@ function App() {
   const [boardRenderKey, setBoardRenderKey] = useState(0);
   const [moveHistory, setMoveHistory] = useState<Move[]>([]);
   const [moveReviews, setMoveReviews] = useState<MoveReviewEntry[]>([]);
+  const [boardWidth, setBoardWidth] = useState(getResponsiveBoardWidth);
 
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [isThinking, setIsThinking] = useState(false);
@@ -409,6 +429,17 @@ function App() {
     initStockfish().catch(() => {
       // Stockfish failed to load — fallback to custom engine only
     });
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setBoardWidth(getResponsiveBoardWidth());
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, []);
 
   const applyCoachRecommendation = useCallback(async (
@@ -765,18 +796,24 @@ function App() {
   }, [streamingInsightId, streamingFullText]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#020206] text-[#c8c8d0] font-sans pb-[env(safe-area-inset-bottom)]">
-      {/* Top bar — responsive for mobile */}
-      <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 sm:px-8 sm:py-4 pointer-events-none">
-        <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-0 sm:gap-2">
-            <div className="text-[13px] sm:text-[15px] font-semibold tracking-[-0.5px] text-white">GROKCHESS</div>
-            <div className="text-[9px] sm:text-[10px] text-white/40 tracking-[0.5px] sm:mt-0.5">Built with Grok</div>
+    <div className="grok-app h-[100dvh] w-screen overflow-hidden bg-[#020206] text-[#c8c8d0] font-sans pb-[env(safe-area-inset-bottom)]">
+      <div className="grok-ambient" aria-hidden="true">
+        <div className="grok-ambient__orb grok-ambient__orb--cyan" />
+        <div className="grok-ambient__orb grok-ambient__orb--violet" />
+        <div className="grok-ambient__grid" />
+      </div>
+
+      {/* Top bar — desktop command deck, mobile two-row cockpit */}
+      <div className="gc-topbar pointer-events-none">
+        <div className="gc-brand pointer-events-auto">
+          <div className="gc-brand__mark">G</div>
+          <div>
+            <div className="gc-brand__title">GROKCHESS</div>
+            <div className="gc-brand__subtitle">Premium AI chess trainer</div>
           </div>
         </div>
 
-        {/* Difficulty selector — more compact on mobile */}
-        <div className="flex items-center gap-0.5 sm:gap-1 bg-black/60 backdrop-blur-xl rounded-full p-0.5 sm:p-1 border border-white/10 pointer-events-auto">
+        <div className="gc-difficulty pointer-events-auto" aria-label="Difficulty selector">
           {DIFFICULTIES.map((d) => {
             const cfg = DIFFICULTY_CONFIG[d];
             const active = d === difficulty;
@@ -784,88 +821,41 @@ function App() {
               <button
                 key={d}
                 onClick={() => changeDifficulty(d)}
-                className={`px-3 sm:px-5 py-1 text-[10px] sm:text-xs font-medium rounded-full transition-all ${active ? 'bg-white text-black' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
+                aria-pressed={active}
+                className={`gc-difficulty__button ${active ? 'gc-difficulty__button--active' : ''}`}
               >
-                {cfg.label}
+                <span>{cfg.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Action buttons — smaller on mobile */}
-        <div className="flex items-center gap-1.5 sm:gap-3 text-[10px] sm:text-xs pointer-events-auto">
-          <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-40 transition">
+        <div className="gc-actions pointer-events-auto">
+          <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="gc-action-btn" aria-label="Take back move">
             <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">TAKE BACK</span>
           </button>
-          <button onClick={() => setIsReviewOpen(true)} disabled={moveReviews.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#00e5ff]/10 hover:bg-[#00e5ff]/15 border border-[#00e5ff]/20 disabled:opacity-40 transition text-[#00e5ff]">
+          <button onClick={() => setIsReviewOpen(true)} disabled={moveReviews.length === 0} className="gc-action-btn gc-action-btn--accent" aria-label="Open game review">
             <span className="sm:hidden">REV</span><span className="hidden sm:inline">REVIEW</span>
           </button>
-          <button onClick={() => resetGame()} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#ff4d6d]">
+          <button onClick={() => resetGame()} className="gc-action-btn gc-action-btn--danger" aria-label="New game">
             <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">NEW</span>
           </button>
         </div>
       </div>
 
-      {/* Premium Holographic Platform (CSS - strong futuristic presence) */}
-      <div className={`absolute inset-0 pt-14 sm:pt-16 flex justify-center 
-        ${isCoachOpen ? 'sm:items-center items-start pt-4 sm:pt-16 pb-0 sm:pb-8' : 'items-center sm:pb-8'}`}>
-        <div 
-          className={`relative holographic-platform ${isCoachOpen ? 'mt-8 sm:mt-3' : 'mt-3'} sm:mt-0`}
-          style={{ 
-            width: 'min(88vh, 92vw)', 
-            height: 'min(88vh, 92vw)',
-          }}
-        >
-          {/* Main dark base with deep material feel */}
-          <div 
-            className="absolute inset-0"
-            style={{
-              background: '#0a0a0f',
-              borderRadius: '10px',
-              boxShadow: `
-                0 0 0 1px rgba(0, 229, 255, 0.12),
-                0 0 80px 12px rgba(0, 229, 255, 0.16),
-                0 0 160px 25px rgba(0, 229, 255, 0.07),
-                0 50px 180px -40px rgb(0 0 0 / 0.95),
-                inset 0 1px 0 rgba(255,255,255,0.03)
-              `,
-              border: '1px solid rgba(0, 229, 255, 0.1)'
-            }}
-          />
-
-          {/* Inner beveled playing surface */}
-          <div 
-            className="absolute"
-            style={{
-              top: '4%',
-              left: '4%',
-              right: '4%',
-              bottom: '4%',
-              background: '#050508',
-              borderRadius: '6px',
-              boxShadow: `
-                inset 0 0 0 1px rgba(0, 229, 255, 0.08),
-                inset 0 20px 40px -10px rgba(0,0,0,0.6),
-                inset 0 -10px 30px -5px rgba(255,255,255,0.015)
-              `
-            }}
-          />
+      {/* Premium 2D/3D board stage */}
+      <div className={`gc-stage ${isCoachOpen ? 'gc-stage--coach-open' : ''}`}>
+        <div className="gc-board-platform" aria-hidden="true" style={{ width: boardWidth + (boardWidth <= 414 ? 16 : 32) }}>
+          <div className="gc-board-platform__rim" />
+          <div className="gc-board-platform__well" />
+          <div className="gc-board-platform__glow" />
         </div>
-      </div>
 
-      {/* Main 2D Board */}
-      <div className={`absolute inset-0 pt-14 sm:pt-16 z-10 flex justify-center 
-        ${isCoachOpen ? 'sm:items-center items-start pt-4 sm:pt-16 pb-0 sm:pb-8' : 'items-center sm:pb-8'}`}>
-        <div 
-          className={`relative ${isCoachOpen ? 'mt-8 sm:mt-3' : 'mt-3'} sm:mt-0`} 
-          style={{ 
-            width: 'min(82vh, 86vw)', 
-            height: 'min(82vh, 86vw)'
-          }}
-        >
+        <div className="gc-board-wrap" style={{ width: boardWidth + (boardWidth <= 414 ? 16 : 32), padding: boardWidth <= 414 ? 8 : 16 }}>
           <Chessboard
             key={boardRenderKey}
             position={fen}
+            boardWidth={boardWidth}
             onPieceDrop={onPieceDrop}
             onPromotionPieceSelect={onPromotionPieceSelect}
             animationDuration={200}
@@ -874,15 +864,16 @@ function App() {
             autoPromoteToQueen={false}
 
             customBoardStyle={{
-              borderRadius: '4px',
-              boxShadow: 'none',
-              border: '1px solid rgba(255,255,255,0.06)', // subtle edge for better square definition on mobile
+              borderRadius: '18px',
+              boxShadow: '0 28px 80px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.08)',
+              border: '1px solid rgba(148, 227, 255, 0.16)',
+              overflow: 'hidden',
             }}
-            customDarkSquareStyle={{ backgroundColor: '#0a0a0f' }}
-            customLightSquareStyle={{ backgroundColor: '#2f2f3a' }}
+            customDarkSquareStyle={{ backgroundColor: '#0f1724' }}
+            customLightSquareStyle={{ backgroundColor: '#7892a3' }}
             customDropSquareStyle={{ 
-              boxShadow: 'inset 0 0 0 4px rgba(0,229,255,0.65)',
-              backgroundColor: 'rgba(0,229,255,0.08)'
+              boxShadow: 'inset 0 0 0 4px rgba(0,229,255,0.72), inset 0 0 36px rgba(0,229,255,0.22)',
+              backgroundColor: 'rgba(0,229,255,0.12)'
             }}
             customSquareStyles={useMemo(() => {
               const styles: Record<string, React.CSSProperties> = {};
@@ -912,20 +903,20 @@ function App() {
         </div>
       </div>
 
-      {/* Coach Panel — Collapsible on mobile so it doesn't block the board */}
+      {/* Coach Panel — glass command card, bottom sheet on mobile */}
       {isCoachOpen ? (
-        <div className="absolute bottom-3 right-2 left-2 sm:bottom-6 sm:right-6 sm:left-auto z-40 sm:w-[340px] pointer-events-auto max-h-[158px] sm:max-h-none">
-          <div className="bg-black/70 backdrop-blur-2xl border border-[#00e5ff]/20 rounded-2xl p-3 sm:p-5 text-sm shadow-2xl h-full flex flex-col">
+        <div className="gc-coach-shell pointer-events-auto">
+          <div className="gc-coach-card">
             <div className="flex items-center justify-between mb-1.5 sm:mb-3 px-1">
-              <div className="text-[8px] sm:text-[10px] tracking-[2px] text-[#00e5ff]/70 font-medium">LIVE COACH</div>
+              <div className="gc-section-label">LIVE COACH</div>
               <div className="flex items-center gap-2">
-                <div className={`text-[8px] sm:text-[10px] px-2 py-0.5 rounded-full border ${isThinking ? 'border-[#00e5ff]/40 text-[#00e5ff]' : 'border-white/10 text-white/50'}`}>
+                <div className={`gc-coach-state ${isThinking ? 'gc-coach-state--active' : ''}`}>
                   {isThinking ? 'THINKING' : 'OBSERVING'}
                 </div>
                 {/* Collapse button - only visible on mobile */}
                 <button 
                   onClick={() => setIsCoachOpen(false)} 
-                  className="sm:hidden flex items-center justify-center w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 transition"
+                  className="sm:hidden flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 transition"
                   aria-label="Hide coach"
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
@@ -934,7 +925,7 @@ function App() {
             </div>
 
             {/* Scrollable insights area - limited height on mobile, latest on top */}
-            <div className="flex-1 overflow-y-auto pr-1 text-[11.5px] sm:text-[13.5px] leading-relaxed space-y-2 min-h-0 max-h-[92px]">
+            <div className="gc-coach-feed">
               <AnimatePresence>
                 {coachInsights.slice().reverse().slice(0, 5).map((insight) => {
                   const displayText = insight.text || insight.fullText || '';
@@ -945,7 +936,7 @@ function App() {
                     key={insight.id}
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 text-[#c8c8d0] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                    className="gc-insight-card"
                   >
                     <div className="mb-1 flex items-center gap-1.5">
                       {insight.quality && (
@@ -969,17 +960,17 @@ function App() {
               </AnimatePresence>
             </div>
 
-            <div className="text-[8px] sm:text-[10px] text-white/40 mt-2 sm:mt-4 pt-2 sm:pt-3 border-t border-white/10 tracking-wide">
+            <div className="gc-coach-footer">
               Strongest move shown automatically after every turn.
             </div>
           </div>
         </div>
       ) : (
         /* Collapsed coach pill on mobile */
-        <div className="absolute bottom-3 right-3 z-40 pointer-events-auto sm:hidden">
+        <div className="absolute bottom-4 right-4 z-40 pointer-events-auto sm:hidden">
           <button
             onClick={() => setIsCoachOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-xl border border-[#00e5ff]/30 text-[#00e5ff] text-xs active:bg-black/80 transition"
+            className="gc-coach-pill"
           >
             LIVE COACH
             <ChevronUp className="w-3.5 h-3.5" />
@@ -989,12 +980,15 @@ function App() {
 
       <AnimatePresence>
         {isReviewOpen && reviewSummary && (
-          <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/90 backdrop-blur-2xl px-4">
+          <div className="gc-modal-backdrop">
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Game review"
               initial={{ opacity: 0, scale: 0.96, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98, y: 8 }}
-              className="w-full max-w-3xl rounded-3xl border border-[#00e5ff]/20 bg-[#05050a]/95 p-5 sm:p-7 shadow-[0_0_80px_rgba(0,229,255,0.12)]"
+              className="gc-review-card"
             >
               <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
@@ -1038,16 +1032,16 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Game status — centered on top of the board on mobile */}
-      <div className="absolute z-50 text-white/50 tracking-[1.5px] font-mono text-[10px] text-center
-        top-[70px] left-1/2 -translate-x-1/2 sm:text-xs sm:bottom-6 sm:top-auto sm:left-6 sm:-translate-x-0 sm:text-left">
+      {/* Game status */}
+      <div className="gc-status" aria-live="polite">
+        <span className="gc-status__dot" />
         {isThinking ? 'OPPONENT CALCULATING...' : chess.turn() === 'w' ? 'YOUR MOVE' : 'AI MOVE'} • {DIFFICULTY_CONFIG[difficulty].label.toUpperCase()}
       </div>
 
       <AnimatePresence>
         {isGameOver && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/95 backdrop-blur-2xl">
-            <motion.div initial={{ opacity: 0, scale: 0.96, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="text-center">
+          <div className="gc-modal-backdrop z-[70]">
+            <motion.div role="dialog" aria-modal="true" aria-label="Game over" initial={{ opacity: 0, scale: 0.96, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="gc-gameover-card">
               <div className="text-[42px] font-semibold tracking-[-1.5px] text-white mb-2">
                 {gameStatus === 'white-wins' && "You won."}
                 {gameStatus === 'black-wins' && "AI wins."}
@@ -1059,10 +1053,10 @@ function App() {
                 {gameStatus === 'draw' && "Solid defense."}
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button onClick={() => setIsReviewOpen(true)} disabled={!reviewSummary} className="px-8 py-3.5 rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#00e5ff] font-medium text-sm tracking-wider disabled:opacity-40">
+                <button onClick={() => setIsReviewOpen(true)} disabled={!reviewSummary} className="gc-hero-btn gc-hero-btn--ghost">
                   REVIEW GAME
                 </button>
-                <button onClick={() => resetGame()} className="px-10 py-3.5 rounded-full bg-white text-black font-medium text-sm tracking-wider">
+                <button onClick={() => resetGame()} className="gc-hero-btn">
                   PLAY AGAIN
                 </button>
               </div>
