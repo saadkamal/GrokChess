@@ -365,6 +365,7 @@ function App() {
   const pendingTakebackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameGenerationRef = useRef(0);
   const boardFenRef = useRef(fen);
+  const completedPromotionDropRef = useRef<{ from: Square; to: Square; at: number } | null>(null);
 
   useEffect(() => {
     boardFenRef.current = fen;
@@ -483,6 +484,7 @@ function App() {
   const resetGame = useCallback((newDifficulty?: Difficulty) => {
     const d = newDifficulty || difficulty;
     gameGenerationRef.current += 1;
+    completedPromotionDropRef.current = null;
     clearPendingTimers();
     chess.reset();
     setFen(chess.fen());
@@ -636,6 +638,17 @@ function App() {
   }, [chess, difficulty, moveHistory, isGameOver, isThinking, clearPendingTimers, applyCoachRecommendation]);
 
   const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square): boolean => {
+    const completedPromotionDrop = completedPromotionDropRef.current;
+    if (
+      completedPromotionDrop
+      && completedPromotionDrop.from === sourceSquare
+      && completedPromotionDrop.to === targetSquare
+      && Date.now() - completedPromotionDrop.at < 2500
+    ) {
+      completedPromotionDropRef.current = null;
+      return true;
+    }
+
     if (chess.turn() !== 'w') { toast.error("It's not your turn"); return false; }
     return makeMove(sourceSquare, targetSquare);
   }, [chess, makeMove]);
@@ -648,12 +661,17 @@ function App() {
     if (!promoteFromSquare || !promoteToSquare) return false;
     const promotion = pieceCodeToPromotion(piece);
     if (!promotion) return false;
-    return makeMove(promoteFromSquare, promoteToSquare, promotion);
+    const moved = makeMove(promoteFromSquare, promoteToSquare, promotion);
+    if (moved) {
+      completedPromotionDropRef.current = { from: promoteFromSquare, to: promoteToSquare, at: Date.now() };
+    }
+    return moved;
   }, [makeMove]);
 
   const takeBack = useCallback(() => {
     if (moveHistory.length === 0 || isThinking) return;
     gameGenerationRef.current += 1;
+    completedPromotionDropRef.current = null;
     clearPendingTimers();
 
     const movesToUndo = Math.min(2, moveHistory.length);
