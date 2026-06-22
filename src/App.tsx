@@ -8,20 +8,21 @@
  * @license MIT
  */
 
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Chess } from 'chess.js';
 import type { Square, Move } from 'chess.js';
-import { Chessboard } from 'react-chessboard';
 import { RotateCcw, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { initStockfish, getBestMove as stockfishGetBestMove, resolveCoachRecommendation } from './lib/stockfishService';
-import { evaluatePosition, getBestMove as getCustomBestMove, pieceCodeToPromotion } from './lib/chessLogic';
+import { evaluatePosition, getBestMove as getCustomBestMove } from './lib/chessLogic';
 import { buildCoachRecommendationText } from './lib/coachText';
 import { analyzePlayerMoveQuality, qualityLabel } from './lib/moveQuality';
 import type { MoveQuality } from './lib/moveQuality';
-
 import './App.css';
+
+const ChessBoard3D = lazy(() => import('./components/ChessBoard3D').then((module) => ({ default: module.ChessBoard3D })));
+
 
 // Types
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -46,6 +47,11 @@ interface CoachInsight {
   streaming?: boolean;
   fullText?: string;
   createdAtMove?: number;
+}
+
+interface PendingPromotion {
+  from: Square;
+  to: Square;
 }
 
 const COACH_LOADING_TEXT = 'Analyzing this position for the best move…';
@@ -160,6 +166,14 @@ function applyChessMove(
     console.warn('Failed to apply move', move);
     return null;
   }
+}
+
+function needsPromotionChoice(chess: Chess, from: Square, to: Square): boolean {
+  const piece = chess.get(from);
+  if (piece?.type !== 'p' || piece.color !== 'w') return false;
+  return (chess.moves({ square: from, verbose: true }) as Move[]).some((move) => (
+    move.to === to && move.flags.includes('p')
+  ));
 }
 
 /** Rebuild chess.js state from our move log — keeps undo/history in sync for take-back. */
@@ -356,8 +370,11 @@ function App() {
   // Dedicated state for last-move square highlights (subtle red/cyan). Same pattern as rec highlights
   // so that Black's move animations also get crisp, non-ghosting last-move squares.
   const [lastMoveSquares, setLastMoveSquares] = useState<{ from: Square; to: Square } | null>(null);
-  const [isCoachOpen, setIsCoachOpen] = useState(true); // Collapsible on mobile
+  const [visualMove, setVisualMove] = useState<Move | null>(null);
+  const [isCoachOpen, setIsCoachOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerHeight >= 520));
   const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null);
+  const [force2D, setForce2D] = useState(false);
 
   // Refs to cancel pending async work (prevents ghost moves, highlights, and coach text)
   const pendingAiMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -365,7 +382,6 @@ function App() {
   const pendingTakebackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameGenerationRef = useRef(0);
   const boardFenRef = useRef(fen);
-  const completedPromotionDropRef = useRef<{ from: Square; to: Square; at: number } | null>(null);
 
   useEffect(() => {
     boardFenRef.current = fen;
@@ -484,7 +500,6 @@ function App() {
   const resetGame = useCallback((newDifficulty?: Difficulty) => {
     const d = newDifficulty || difficulty;
     gameGenerationRef.current += 1;
-    completedPromotionDropRef.current = null;
     clearPendingTimers();
     chess.reset();
     setFen(chess.fen());
@@ -492,10 +507,12 @@ function App() {
     setMoveHistory([]);
     setMoveReviews([]);
     setIsReviewOpen(false);
+    setPendingPromotion(null);
     setGameStatus('playing');
     setIsThinking(false);
     setRecommendationHighlights(null);
     setLastMoveSquares(null);
+    setVisualMove(null);
     setCoachInsights([{
       id: Date.now(),
       text: `New game — ${DIFFICULTY_CONFIG[d].label}. I will show the best move and explain exactly why after every turn.`,
@@ -508,7 +525,12 @@ function App() {
   const makeMove = useCallback((from: Square, to: Square, promotion?: 'q' | 'r' | 'b' | 'n'): boolean => {
     if (isGameOver || isThinking) return false;
     const fenBeforePlayerMove = chess.fen();
-    const move = chess.move({ from, to, promotion });
+    let move: Move | null = null;
+    try {
+      move = chess.move({ from, to, promotion });
+    } catch {
+      return false;
+    }
     if (!move) return false;
 
     const newFen = chess.fen();
@@ -517,6 +539,7 @@ function App() {
     setMoveHistory(newHistory);
     setRecommendationHighlights(null);
     setLastMoveSquares({ from: move.from, to: move.to });
+    setVisualMove(move);
 
     clearPendingTimers();
 
@@ -571,6 +594,7 @@ function App() {
           setLastMoveSquares(rolledBackHistory.length > 0
             ? { from: rolledBackHistory[rolledBackHistory.length - 1].from, to: rolledBackHistory[rolledBackHistory.length - 1].to }
             : null);
+          setVisualMove(null);
           toast.error('AI could not respond — your move was undone.');
           return;
         }
@@ -595,6 +619,7 @@ function App() {
           setLastMoveSquares(rolledBackHistory.length > 0
             ? { from: rolledBackHistory[rolledBackHistory.length - 1].from, to: rolledBackHistory[rolledBackHistory.length - 1].to }
             : null);
+          setVisualMove(null);
           return;
         }
 
@@ -605,6 +630,7 @@ function App() {
         const updatedHistory = [...newHistory, aiMove];
         setFen(updatedFen);
         setMoveHistory(updatedHistory);
+        setVisualMove(aiMove);
         requestAnimationFrame(() => {
           if (generation !== gameGenerationRef.current) return;
           setLastMoveSquares({ from: aiMove.from, to: aiMove.to });
@@ -637,41 +663,31 @@ function App() {
     return true;
   }, [chess, difficulty, moveHistory, isGameOver, isThinking, clearPendingTimers, applyCoachRecommendation]);
 
-  const onPieceDrop = useCallback((sourceSquare: Square, targetSquare: Square): boolean => {
-    const completedPromotionDrop = completedPromotionDropRef.current;
-    if (
-      completedPromotionDrop
-      && completedPromotionDrop.from === sourceSquare
-      && completedPromotionDrop.to === targetSquare
-      && Date.now() - completedPromotionDrop.at < 2500
-    ) {
-      completedPromotionDropRef.current = null;
-      return true;
+  const requestPlayerMove = useCallback((sourceSquare: Square, targetSquare: Square): void => {
+    if (chess.turn() !== 'w') {
+      toast.error("It's not your turn");
+      return;
     }
 
-    if (chess.turn() !== 'w') { toast.error("It's not your turn"); return false; }
-    return makeMove(sourceSquare, targetSquare);
+    if (needsPromotionChoice(chess, sourceSquare, targetSquare)) {
+      setPendingPromotion({ from: sourceSquare, to: targetSquare });
+      return;
+    }
+
+    if (!makeMove(sourceSquare, targetSquare)) {
+      toast.error('That move is not legal.');
+    }
   }, [chess, makeMove]);
 
-  const onPromotionPieceSelect = useCallback((
-    piece?: string,
-    promoteFromSquare?: Square,
-    promoteToSquare?: Square,
-  ): boolean => {
-    if (!promoteFromSquare || !promoteToSquare) return false;
-    const promotion = pieceCodeToPromotion(piece);
-    if (!promotion) return false;
-    const moved = makeMove(promoteFromSquare, promoteToSquare, promotion);
-    if (moved) {
-      completedPromotionDropRef.current = { from: promoteFromSquare, to: promoteToSquare, at: Date.now() };
-    }
-    return moved;
-  }, [makeMove]);
+  const choosePromotion = useCallback((promotion: PromotionPiece): void => {
+    if (!pendingPromotion) return;
+    const moved = makeMove(pendingPromotion.from, pendingPromotion.to, promotion);
+    if (moved) setPendingPromotion(null);
+  }, [makeMove, pendingPromotion]);
 
   const takeBack = useCallback(() => {
     if (moveHistory.length === 0 || isThinking) return;
     gameGenerationRef.current += 1;
-    completedPromotionDropRef.current = null;
     clearPendingTimers();
 
     const movesToUndo = Math.min(2, moveHistory.length);
@@ -684,6 +700,8 @@ function App() {
     setMoveReviews((prev) => prev.filter((review) => review.moveNumber * 2 - 1 <= newHistory.length));
     const restoredLast = newHistory.length > 0 ? { from: newHistory[newHistory.length-1].from, to: newHistory[newHistory.length-1].to } : undefined;
     setLastMoveSquares(restoredLast || null);
+    setVisualMove(null);
+    setPendingPromotion(null);
     setGameStatus('playing');
 
     const loadingId = Date.now();
@@ -745,6 +763,15 @@ function App() {
     }
   }
 
+  useEffect(() => {
+    const collapseForLandscape = () => {
+      if (window.innerHeight < 520) setIsCoachOpen(false);
+    };
+    collapseForLandscape();
+    window.addEventListener('resize', collapseForLandscape);
+    return () => window.removeEventListener('resize', collapseForLandscape);
+  }, []);
+
   // Streaming for recommendations — depend on stable id/text, not partial text updates
   useEffect(() => {
     if (!streamingInsightId || !streamingFullText) return;
@@ -767,11 +794,11 @@ function App() {
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#020206] text-[#c8c8d0] font-sans pb-[env(safe-area-inset-bottom)]">
       {/* Top bar — responsive for mobile */}
-      <div className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 sm:px-8 sm:py-4 pointer-events-none">
+      <div className="absolute top-0 left-0 right-0 z-50 flex flex-wrap items-start justify-between gap-2 px-2 py-2 sm:flex-nowrap sm:items-center sm:px-8 sm:py-4 pointer-events-none">
         <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto">
           <div className="flex flex-col sm:flex-row sm:items-center gap-0 sm:gap-2">
-            <div className="text-[13px] sm:text-[15px] font-semibold tracking-[-0.5px] text-white">GROKCHESS</div>
-            <div className="text-[9px] sm:text-[10px] text-white/40 tracking-[0.5px] sm:mt-0.5">Built with Grok</div>
+            <div className="text-[12px] sm:text-[15px] font-semibold tracking-[-0.5px] text-white">GROKCHESS</div>
+            <div className="text-[8px] sm:text-[10px] text-white/40 tracking-[0.5px] sm:mt-0.5">Built with Grok</div>
           </div>
         </div>
 
@@ -784,7 +811,7 @@ function App() {
               <button
                 key={d}
                 onClick={() => changeDifficulty(d)}
-                className={`px-3 sm:px-5 py-1 text-[10px] sm:text-xs font-medium rounded-full transition-all ${active ? 'bg-white text-black' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
+                className={`whitespace-nowrap px-2 sm:px-5 py-1 text-[9px] sm:text-xs font-medium rounded-full transition-all ${active ? 'bg-white text-black' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
               >
                 {cfg.label}
               </button>
@@ -793,14 +820,17 @@ function App() {
         </div>
 
         {/* Action buttons — smaller on mobile */}
-        <div className="flex items-center gap-1.5 sm:gap-3 text-[10px] sm:text-xs pointer-events-auto">
-          <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-40 transition">
+        <div className="flex items-center gap-1 sm:gap-3 text-[9px] sm:text-xs pointer-events-auto">
+          <button onClick={takeBack} disabled={moveHistory.length === 0 || isThinking} className="flex items-center gap-1.5 px-2 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-40 transition">
             <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">TAKE BACK</span>
           </button>
-          <button onClick={() => setIsReviewOpen(true)} disabled={moveReviews.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#00e5ff]/10 hover:bg-[#00e5ff]/15 border border-[#00e5ff]/20 disabled:opacity-40 transition text-[#00e5ff]">
+          <button onClick={() => setIsReviewOpen(true)} disabled={moveReviews.length === 0} className="flex items-center gap-1.5 px-2 py-1.5 sm:px-4 sm:py-2 rounded-full bg-[#00e5ff]/10 hover:bg-[#00e5ff]/15 border border-[#00e5ff]/20 disabled:opacity-40 transition text-[#00e5ff]">
             <span className="sm:hidden">REV</span><span className="hidden sm:inline">REVIEW</span>
           </button>
-          <button onClick={() => resetGame()} className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#ff4d6d]">
+          <button onClick={() => setForce2D((value) => !value)} className="rounded-full border border-white/10 bg-white/5 px-2 py-1.5 text-white/65 transition hover:bg-white/10 hover:text-white sm:px-4 sm:py-2">
+            {force2D ? '3D' : '2D'}
+          </button>
+          <button onClick={() => resetGame()} className="flex items-center gap-1.5 px-2 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#ff4d6d]">
             <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">NEW</span>
           </button>
         </div>
@@ -812,8 +842,8 @@ function App() {
         <div 
           className={`relative holographic-platform ${isCoachOpen ? 'mt-8 sm:mt-3' : 'mt-3'} sm:mt-0`}
           style={{ 
-            width: 'min(88vh, 92vw)', 
-            height: 'min(88vh, 92vw)',
+            width: 'min(88vh, 92vw, calc(100vh - 96px))', 
+            height: 'min(88vh, 92vw, calc(100vh - 96px))',
           }}
         >
           {/* Main dark base with deep material feel */}
@@ -853,62 +883,31 @@ function App() {
         </div>
       </div>
 
-      {/* Main 2D Board */}
+      {/* Main 3D Board */}
       <div className={`absolute inset-0 pt-14 sm:pt-16 z-10 flex justify-center 
         ${isCoachOpen ? 'sm:items-center items-start pt-4 sm:pt-16 pb-0 sm:pb-8' : 'items-center sm:pb-8'}`}>
-        <div 
-          className={`relative ${isCoachOpen ? 'mt-8 sm:mt-3' : 'mt-3'} sm:mt-0`} 
-          style={{ 
-            width: 'min(82vh, 86vw)', 
-            height: 'min(82vh, 86vw)'
+        <div
+          className={`relative ${isCoachOpen ? 'mt-8 sm:mt-3' : 'mt-3'} sm:mt-0`}
+          style={{
+            width: 'min(78vh, 94vw, calc(100vh - 120px))',
+            height: 'min(78vh, 94vw, calc(100vh - 120px))'
           }}
         >
-          <Chessboard
-            key={boardRenderKey}
-            position={fen}
-            onPieceDrop={onPieceDrop}
-            onPromotionPieceSelect={onPromotionPieceSelect}
-            animationDuration={200}
-            boardOrientation="white"
-            arePiecesDraggable={!isGameOver && !isThinking && chess.turn() === 'w'}
-            autoPromoteToQueen={false}
-
-            customBoardStyle={{
-              borderRadius: '4px',
-              boxShadow: 'none',
-              border: '1px solid rgba(255,255,255,0.06)', // subtle edge for better square definition on mobile
-            }}
-            customDarkSquareStyle={{ backgroundColor: '#0a0a0f' }}
-            customLightSquareStyle={{ backgroundColor: '#2f2f3a' }}
-            customDropSquareStyle={{ 
-              boxShadow: 'inset 0 0 0 4px rgba(0,229,255,0.65)',
-              backgroundColor: 'rgba(0,229,255,0.08)'
-            }}
-            customSquareStyles={useMemo(() => {
-              const styles: Record<string, React.CSSProperties> = {};
-
-              // Last move highlighting (very subtle)
-              if (lastMoveSquares) {
-                const isOpponentMove = chess.turn() === 'w';
-                if (isOpponentMove) {
-                  styles[lastMoveSquares.from] = { background: 'rgba(255, 69, 58, 0.07)' };
-                  styles[lastMoveSquares.to]   = { background: 'rgba(255, 69, 58, 0.12)' };
-                } else {
-                  styles[lastMoveSquares.from] = { background: 'rgba(0, 229, 255, 0.04)' };
-                  styles[lastMoveSquares.to]   = { background: 'rgba(0, 229, 255, 0.08)' };
-                }
-              }
-
-              // Recommendation highlights
-              if (recommendationHighlights && recommendationHighlights.length >= 2) {
-                const [fromSq, toSq] = recommendationHighlights;
-                styles[fromSq] = { ...styles[fromSq], background: 'rgba(0, 229, 255, 0.22)' };
-                styles[toSq] = { ...styles[toSq], background: 'rgba(0, 229, 255, 0.38)' };
-              }
-
-              return styles;
-            }, [lastMoveSquares, recommendationHighlights, chess])}
-          />
+          <Suspense fallback={<div className="grok-3d-board grok-3d-board-loading">Preparing 3D board…</div>}>
+            <ChessBoard3D
+              boardKey={boardRenderKey}
+              fen={fen}
+              disabled={isGameOver || isThinking || chess.turn() !== 'w'}
+              lastMoveSquares={lastMoveSquares}
+              recommendationHighlights={recommendationHighlights}
+              moveHistory={visualMove ? [visualMove] : []}
+              force2D={force2D}
+              onMove={requestPlayerMove}
+            />
+          </Suspense>
+          <div className="grok-board-hint pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded-full border border-[#00e5ff]/20 bg-black/45 px-3 py-1 text-[9px] font-medium tracking-[1.8px] text-[#9df5ff] backdrop-blur-xl sm:top-4 sm:text-[10px]">
+            TAP PIECE → TAP TARGET • CINEMATIC 3D VIEW
+          </div>
         </div>
       </div>
 
@@ -1033,6 +1032,40 @@ function App() {
                   </div>
                 ))}
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pendingPromotion && (
+          <div className="fixed inset-0 z-[76] flex items-center justify-center bg-black/70 px-4 backdrop-blur-xl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 6 }}
+              className="w-full max-w-sm rounded-3xl border border-[#00e5ff]/25 bg-[#05050a]/95 p-5 text-center shadow-[0_0_80px_rgba(0,229,255,0.16)]"
+            >
+              <div className="text-[10px] font-medium uppercase tracking-[2px] text-[#00e5ff]/70">Promotion</div>
+              <div className="mt-2 text-xl font-semibold text-white">Choose your new piece</div>
+              <div className="mt-5 grid grid-cols-4 gap-2">
+                {([
+                  ['q', 'Queen'],
+                  ['r', 'Rook'],
+                  ['b', 'Bishop'],
+                  ['n', 'Knight'],
+                ] as [PromotionPiece, string][]).map(([piece, label]) => (
+                  <button
+                    key={piece}
+                    onClick={() => choosePromotion(piece)}
+                    className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-4 text-sm font-semibold text-white transition hover:border-[#00e5ff]/40 hover:bg-[#00e5ff]/10"
+                  >
+                    <div className="text-2xl">{piece.toUpperCase()}</div>
+                    <div className="mt-1 text-[10px] font-medium text-white/50">{label}</div>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setPendingPromotion(null)} className="mt-4 text-xs text-white/45 hover:text-white/70">Cancel</button>
             </motion.div>
           </div>
         )}
